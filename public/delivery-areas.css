@@ -1,0 +1,12 @@
+.delivery-area-card{border:1px solid #e9e3ed;background:#fcfafc;border-radius:14px;padding:13px;margin:12px 0 15px}
+.delivery-area-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px}
+.delivery-area-status{font-size:10px;font-weight:800;border-radius:99px;padding:5px 8px;background:#e9f7ef;color:#187349;white-space:nowrap}
+.delivery-area-status.unavailable{background:#fff0ed;color:#aa3927}
+.delivery-area-picker{display:grid;gap:6px;margin-top:11px;font-size:11px;font-weight:700;color:#716a78}
+.delivery-area-picker select{width:100%;min-height:42px;border:1px solid #ded6e3;border-radius:10px;padding:0 10px;background:white;color:#332c37;font:inherit;font-size:12px}
+.delivery-area-copy{font-size:11px;color:#716a78;margin:9px 0 6px}
+.delivery-area-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.delivery-area-meta span{border-radius:8px;background:white;padding:8px;font-size:10px;color:#77717d;display:flex;justify-content:space-between;gap:5px}
+.delivery-area-meta b{color:#322b38;font-size:11px}
+.delivery-area-hint{font-size:10px;line-height:1.45;color:#68616e;margin:9px 0 0}
+@media(max-width:700px){.delivery-area-card{padding:12px;margin:10px 0 13px}.delivery-area-meta{grid-template-columns:1fr 1fr}.checkout-section .delivery-area-card{margin-top:14px}.delivery-area-picker select{font-size:16px}}

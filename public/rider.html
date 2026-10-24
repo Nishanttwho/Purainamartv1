@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#252039" />
+    <meta name="description" content="Independent rider application for shared grocery orders." />
+    <title>Puraina Mart · Rider</title>
+    <link rel="icon" href="/assets/puraina-mart-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/rider.css?v=rider-assets-1" />
+    <link rel="stylesheet" href="/notifications.css" />
+  </head>
+  <body>
+    <div class="rider-app">
+      <div class="rider-ribbon"><span></span> Rider operations · shared customer orders</div>
+      <header class="rider-header">
+        <a class="rider-brand" href="/rider" aria-label="Puraina Mart Rider home"><img class="rider-brand-icon" src="/assets/puraina-mart-logo.png" alt="Puraina Mart logo" /><span><strong>DELIVERY PARTNER</strong><small>RIDER APP</small></span></a>
+        <div id="header-status" class="header-status"></div>
+      </header>
+      <main id="rider-main" tabindex="-1"><div class="loading">Connecting to the local dispatch service…</div></main>
+      <nav id="rider-nav" class="rider-nav" aria-label="Rider navigation"></nav>
+    </div>
+    <div id="rider-toast" class="rider-toast" aria-live="polite"></div>
+    <script type="module" src="/rider-app.js?v=rider-assets-1"></script>
+  </body>
+</html>

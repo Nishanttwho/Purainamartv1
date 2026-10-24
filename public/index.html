@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#4d1768" />
+    <meta name="description" content="Puraina Mart — Roz ka saamaan, ghar tak." />
+    <title>Puraina Mart · Groceries for home</title>
+    <link rel="icon" href="/assets/puraina-mart-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/delivery-areas.css" />
+    <link rel="stylesheet" href="/notifications.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      
+      <header class="topbar">
+        <a class="brand" href="/" data-view="home" aria-label="Puraina Mart home"><img class="brand-logo" src="/assets/puraina-mart-logo.png" alt="Puraina Mart logo" /></a>
+        <button class="address-trigger" data-action="address-picker"><span class="pin-icon">⌖</span><span class="address-copy"><small>DELIVERING TO</small><strong id="address-title">Choose your location</strong></span><span class="chevron">⌄</span></button>
+        <label class="searchbar"><span class="search-icon">⌕</span><input id="global-search" type="search" placeholder="Search for groceries, snacks and more" autocomplete="off" /><kbd>⌘ K</kbd></label>
+        <button class="header-icon" data-action="open-orders" title="Orders"><span>▤</span><small>Orders</small></button>
+        <button class="header-icon notification-trigger" data-action="open-notifications" title="Notifications"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><i id="notification-badge" class="notification-badge hidden"></i></span><small>Updates</small></button>
+        <button class="header-icon" data-view="wishlist" title="Wishlist"><span>♡</span><small>Wishlist <i id="wishlist-badge" class="wishlist-badge hidden">0</i></small></button>
+        <button class="header-icon user-button" data-action="account" title="Account"><span>♙</span><small id="account-label">Sign in</small></button>
+        <button class="header-icon cart-header" data-action="cart" title="Cart"><span>▱<i id="cart-badge" class="cart-badge hidden">0</i></span><small>Cart</small></button>
+      </header>
+      <main id="main-content" tabindex="-1"></main>
+      <nav class="mobile-nav" aria-label="Main navigation">
+        <button class="nav-button active" data-view="home"><span>⌂</span><small>Home</small></button>
+        <button class="nav-button" data-view="categories"><span>▦</span><small>Categories</small></button>
+        <button class="nav-button" data-view="wishlist"><span>♡</span><small>Wishlist</small></button>
+        <button class="nav-button" data-view="cart"><span>▱</span><small>Cart</small></button>
+        <button class="nav-button" data-view="account"><span>♙</span><small>Account</small></button>
+      </nav>
+    </div>
+    <aside id="quick-cart" class="quick-cart-bar" aria-live="polite"></aside>
+    <div id="overlay-root"></div>
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
