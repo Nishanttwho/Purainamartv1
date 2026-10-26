@@ -13,6 +13,7 @@ import { activeVariant, fromMoneyCents, toMoneyCents, validatePricingVariants } 
 import { cloudinaryConfig, isCloudinaryImageUrl, signCloudinaryUpload } from './lib/cloudinary.mjs';
 import { defaultHomepageBanners, validateHomepageBanners } from './lib/homepage-banners.mjs';
 import { isValidSummaryDate, isValidSummaryMonth, summarizeRiderDeliveries } from './lib/rider-delivery-summary.mjs';
+import { createSerialRequestQueue, enqueueWithDeadline } from './lib/serial-request-queue.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
@@ -105,7 +106,24 @@ function notificationTemplateDefaults() {
   return Object.fromEntries(['order_received','order_status','rider_assigned','delivery_status','payment_update','referral_reward','promotional_campaign','announcement','rider_order','admin_operational'].map(eventType => [eventType,{ eventType,enabled:true,inAppEnabled:true,pushEnabled:true,updatedAt:null,updatedBy:null }]));
 }
 
-const pool = usePostgres ? new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.PG_POOL_MAX || 5), ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000, application_name: 'zepto-grocery-app' }) : null;
+function boundedTimeoutMs(name, fallback, { min = 1000, max = 120000 } = {}) {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value >= min && value <= max ? value : fallback;
+}
+
+const pool = usePostgres ? new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX || 5),
+  ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true },
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  // Server-side limits make failed locks and slow SQL roll back instead of
+  // holding the serialized application-store queue indefinitely.
+  statement_timeout: boundedTimeoutMs('PG_STATEMENT_TIMEOUT_MS', 12000),
+  lock_timeout: boundedTimeoutMs('PG_LOCK_TIMEOUT_MS', 4000),
+  idle_in_transaction_session_timeout: boundedTimeoutMs('PG_IDLE_TX_TIMEOUT_MS', 40000),
+  application_name: 'zepto-grocery-app'
+}) : null;
 let postgresStartupClient = null;
 let postgresNeedsInitialization = false;
 let store;
@@ -1292,12 +1310,10 @@ async function handleAdminApi(req, res, url) {
   return send(res, 404, { error: 'Admin API route not found' });
 }
 
-let databaseRequestQueue = Promise.resolve();
+const databaseRequestQueue = createSerialRequestQueue();
 let notificationWorkerRunning = false;
 function enqueueDatabaseOperation(callback) {
-  const operation=databaseRequestQueue.then(callback);
-  databaseRequestQueue=operation.catch(()=>{});
-  return operation;
+  return databaseRequestQueue.enqueue(callback);
 }
 async function withNotificationStateTransaction(callback) {
   if(!usePostgres){const changed=await callback(store);if(changed)persist();return changed;}
@@ -1376,52 +1392,221 @@ async function drainNotificationOutbox() {
   }catch(error){console.error('Notification delivery worker failed; pending jobs remain persisted.');}
   finally{notificationWorkerRunning=false;}
 }
-let notificationWorkerTimer=null;
+let notificationWorkerTimer = null;
+let notificationWorkerCycleRunning = false;
 function scheduleNotificationWorkers() {
-  if(notificationWorkerTimer)return;
-  notificationWorkerTimer=setTimeout(async()=>{notificationWorkerTimer=null;await processDueCampaigns();await drainNotificationOutbox();},250);
+  if (notificationWorkerTimer || notificationWorkerCycleRunning) return;
+  notificationWorkerTimer = setTimeout(async () => {
+    notificationWorkerTimer = null;
+    if (notificationWorkerCycleRunning) return;
+    notificationWorkerCycleRunning = true;
+    try {
+      await processDueCampaigns();
+      await drainNotificationOutbox();
+    } finally {
+      notificationWorkerCycleRunning = false;
+    }
+  }, 250);
   notificationWorkerTimer.unref?.();
 }
 const notificationWorkerInterval=setInterval(scheduleNotificationWorkers,3000);notificationWorkerInterval.unref?.();
+function directJson(res, status, body) {
+  if (res.headersSent || res.writableEnded || res.destroyed) return;
+  const headers = {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+    'permissions-policy': 'camera=(), microphone=(), geolocation=(self)',
+    'content-security-policy': "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://www.googleapis.com https://api.cloudinary.com; frame-src https://accounts.google.com; upgrade-insecure-requests"
+  };
+  if (isProduction) headers['strict-transport-security'] = 'max-age=31536000; includeSubDomains';
+  res.writeHead(status, headers);
+  res.end(JSON.stringify(body));
+}
+
+function requestPath(req) {
+  try { return new URL(req.url || '/', 'http://localhost').pathname; }
+  catch { return ''; }
+}
+
+async function handleIndependentHealth(req, res) {
+  const pathname = requestPath(req);
+  if (req.method !== 'GET' || !['/api/health', '/api/health/ready'].includes(pathname)) return false;
+
+  // Liveness never waits on PostgreSQL, the global request queue, or the
+  // application-store snapshot. This makes process health observable even if
+  // database work is blocked.
+  if (pathname === '/api/health') {
+    directJson(res, 200, {
+      status: 'ok',
+      mode: isProduction ? 'production' : 'development',
+      database: usePostgres ? 'configured' : 'not_configured',
+      authConfigured: { google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) },
+      payments: { cod: true, online: false }
+    });
+    return true;
+  }
+
+  if (!usePostgres) {
+    directJson(res, 200, { status: 'ready', database: 'not_configured', ready: true });
+    return true;
+  }
+
+  // Readiness has a short independent deadline. It does not enter the
+  // application queue and does not load the full store snapshot.
+  let timeout;
+  try {
+    const probe = pool.query({ text: 'SELECT 1 AS ok', query_timeout: 1200 });
+    const result = await Promise.race([
+      probe,
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(Object.assign(new Error('database readiness timeout'), { code: 'DB_READINESS_TIMEOUT' })), 1500); timeout.unref?.(); })
+    ]);
+    directJson(res, 200, { status: 'ready', database: 'connected', ready: true, check: Number(result.rows[0]?.ok) === 1 ? 'passed' : 'unknown' });
+  } catch (error) {
+    directJson(res, 503, {
+      status: 'not_ready',
+      database: 'unavailable',
+      ready: false,
+      code: error?.code === 'DB_READINESS_TIMEOUT' ? 'DB_READINESS_TIMEOUT' : 'DB_READINESS_FAILED'
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  return true;
+}
+
+function respondQueueTimeout(res) {
+  directJson(res, 503, {
+    error: 'The application is busy processing other requests. Please retry shortly.',
+    code: 'DATABASE_QUEUE_TIMEOUT'
+  });
+}
+
 const server = http.createServer((req, res) => {
   req.res = res;
+
+  // Keep liveness and readiness independent of the serialized database queue.
+  const healthPath = requestPath(req);
+  if (req.method === 'GET' && ['/api/health', '/api/health/ready'].includes(healthPath)) {
+    void handleIndependentHealth(req, res);
+    return;
+  }
+
+  // Google OAuth remains unconfigured until credentials are supplied, but
+  // report that explicitly without waiting for an application-store snapshot.
+  if (usePostgres && req.method === 'POST' &&
+      ['/api/auth/google/start', '/api/auth/google/callback'].includes(requestPath(req)) &&
+      (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET)) {
+    directJson(res, 503, {
+      error: 'Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to the server environment.',
+      code: 'GOOGLE_AUTH_NOT_CONFIGURED'
+    });
+    return;
+  }
+
   if (usePostgres && req.url?.startsWith('/api/')) {
-    const operation = enqueueDatabaseOperation(() => runPostgresRequest(req, res));
+    let queueExpired = false;
+    const queueTimeoutMs = boundedTimeoutMs('API_QUEUE_WAIT_TIMEOUT_MS', 20000);
+    const operation = enqueueWithDeadline(databaseRequestQueue, async queueMetrics => {
+      // Requests which timed out while queued must not execute later (most
+      // importantly, this prevents stale queued POSTs from mutating state).
+      return runPostgresRequest(req, res, queueMetrics);
+    }, {
+      timeoutMs: queueTimeoutMs,
+      onTimeout: () => {
+        queueExpired = true;
+        console.warn(JSON.stringify({ event: 'api_queue_wait_timeout', method: req.method, path: requestPath(req), waitMs: queueTimeoutMs, queuedRequests: databaseRequestQueue.depth }));
+        respondQueueTimeout(res);
+      },
+      shouldSkip: () => queueExpired || res.destroyed || res.writableEnded
+    });
     operation.finally(scheduleNotificationWorkers).catch(()=>{});
     return;
   }
   return handleRequest(req, res).finally(scheduleNotificationWorkers);
 });
 
-async function runPostgresRequest(req, res) {
+async function runPostgresRequest(req, res, queueMetrics = {}) {
   let client;
+  const requestStartedAt = Date.now();
+  const timings = { queueWaitMs: Number(queueMetrics.queueWaitMs || 0), queueDepthAtStart: Number(queueMetrics.queueDepthAtStart || 0) };
+  let phase = 'pool_connect';
+  let phaseStartedAt = Date.now();
+  let context = null;
   try {
     client = await pool.connect();
+    timings.poolConnectMs = Date.now() - phaseStartedAt;
+
+    phase = 'begin_transaction';
+    phaseStartedAt = Date.now();
     await client.query('BEGIN');
+    timings.beginTransactionMs = Date.now() - phaseStartedAt;
+
+    phase = 'advisory_lock';
+    phaseStartedAt = Date.now();
     await client.query('SELECT pg_advisory_xact_lock($1)', [1718343473]);
+    timings.advisoryLockWaitMs = Date.now() - phaseStartedAt;
+
+    phase = 'read_store_snapshot';
+    phaseStartedAt = Date.now();
     const latest = await readPostgresStore(client);
+    timings.readStoreSnapshotMs = Date.now() - phaseStartedAt;
     if (!latest) throw new Error('PostgreSQL store unexpectedly has no initialized records.');
     store = latest;
     products = store.products;
     categories = store.categories;
     activeDatabaseRequest = { res, dirty: false, response: null };
+
+    phase = 'request_handler';
+    phaseStartedAt = Date.now();
     await handleRequest(req, res);
-    const context = activeDatabaseRequest;
-    if (context.response?.status >= 500) await client.query('ROLLBACK');
-    else {
-      if (context.dirty) await writePostgresStore(client, store, { replace: true });
+    timings.handlerMs = Date.now() - phaseStartedAt;
+    context = activeDatabaseRequest;
+
+    if (context.response?.status >= 500) {
+      phase = 'rollback';
+      phaseStartedAt = Date.now();
+      await client.query('ROLLBACK');
+      timings.rollbackMs = Date.now() - phaseStartedAt;
+    } else {
+      if (context.dirty) {
+        phase = 'write_store';
+        phaseStartedAt = Date.now();
+        await writePostgresStore(client, store, { replace: true });
+        timings.writeStoreMs = Date.now() - phaseStartedAt;
+      } else timings.writeStoreMs = 0;
+      phase = 'commit';
+      phaseStartedAt = Date.now();
       await client.query('COMMIT');
+      timings.commitMs = Date.now() - phaseStartedAt;
     }
+
     if (context.response && !res.writableEnded) { res.writeHead(context.response.status, context.response.headers); res.end(context.response.responseBody); }
     else if (!res.writableEnded) { res.writeHead(500, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify({ error: 'The request did not produce a response.' })); }
   } catch (error) {
-    console.error('PostgreSQL request failed:', error.message);
+    phase = phase === 'write_and_commit' ? 'write_or_commit_error' : phase;
+    console.error('PostgreSQL request failed:', JSON.stringify({ path: requestPath(req), method: req.method, phase, code: error?.code || 'UNKNOWN' }));
     try { if (client) await client.query('ROLLBACK'); } catch {}
     if (!res.headersSent && !res.writableEnded) {
       const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
-      res.writeHead(503, headers); res.end(JSON.stringify({ error: 'The application data store is temporarily unavailable. Please retry.' }));
+      res.writeHead(503, headers); res.end(JSON.stringify({ error: 'The application data store is temporarily unavailable. Please retry.', code: phase === 'advisory_lock' ? 'DATABASE_LOCK_TIMEOUT' : 'DATABASE_OPERATION_FAILED' }));
     }
   } finally {
+    const totalMs = Date.now() - requestStartedAt;
+    timings.totalMs = totalMs;
+    if (totalMs >= 1500 || timings.queueWaitMs >= 500) {
+      console.warn(JSON.stringify({
+        event: 'slow_postgres_api_request',
+        method: req.method,
+        path: requestPath(req),
+        status: context?.response?.status || res.statusCode,
+        phase,
+        ...timings,
+        totalMs
+      }));
+    }
     activeDatabaseRequest = null;
     client?.release();
   }
@@ -1481,7 +1666,7 @@ async function handleRequest(req, res) {
       return send(res, 200, { ok: true }, { 'set-cookie': sessionCookie('asid', '', req, 0) });
     }
     if (url.pathname.startsWith('/api/admin/')) return await handleAdminApi(req, res, url);
-    if (req.method === 'GET' && url.pathname === '/api/health') return send(res, 200, { status: 'ok', mode: isProduction ? 'production' : 'development', authConfigured: { google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) }, payments: { cod: true, online: false } });
+    if (req.method === 'GET' && url.pathname === '/api/health') return send(res, 200, { status: 'ok', mode: isProduction ? 'production' : 'development', authConfigured: { google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) }, payments: { cod: true, online: false } }); // Handled before database queue in PostgreSQL mode.
     if (req.method === 'GET' && url.pathname === '/api/referrals/validate') {
       const code = String(url.searchParams.get('code') || '').trim().toUpperCase(); const referrer = findReferrerByCode(code);
       return send(res, 200, { valid: Boolean(store.referralCampaign?.enabled && referrer), campaignEnabled: Boolean(store.referralCampaign?.enabled), reason: !store.referralCampaign?.enabled ? 'campaign_unavailable' : !referrer ? 'invalid_code' : null });
