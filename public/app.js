@@ -773,9 +773,15 @@ document.addEventListener('submit', async event => {
     const values = Object.fromEntries(new FormData(event.target).entries());
     const isRegistration = event.target.id === 'auth-register-form';
     if (isRegistration && values.password !== values.confirmPassword) { $('#auth-error').textContent = 'Passwords do not match.'; return; }
+    const form = event.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalLabel = submitButton?.textContent || (isRegistration ? 'Create account' : 'Sign in');
+    if (submitButton) { submitButton.disabled = true; submitButton.textContent = isRegistration ? 'Creating account…' : 'Signing in…'; }
     const endpoint = isRegistration ? '/api/auth/register' : '/api/auth/password/login';
+    let authRequestSucceeded = false;
     try {
       const result = await post(endpoint, { ...values, phone: state.modal.phone, referralCode: pendingReferralCode || sessionStorage.getItem('zepto.pendingReferral') || '' });
+      authRequestSucceeded = true;
       state.user = result.user; state.modal = null;
       const referralStatus = result.referral?.status;
       if (pendingReferralCode) { try { sessionStorage.removeItem('zepto.pendingReferral'); } catch {} pendingReferralCode = ''; }
@@ -785,7 +791,14 @@ document.addEventListener('submit', async event => {
       if (state.view === 'notifications') { const n=await api('/api/notifications');state.notifications=n.notifications;state.notificationUnread=n.unread; }
       render(); toast(referralStatus === 'linked' ? 'Your friend’s referral was linked' : referralStatus === 'invalid_code' ? 'That referral link is invalid' : 'You’re signed in');
       if (state.view === 'checkout' && !state.addresses.length) openAddress('form');
-    } catch (error) { $('#auth-error').textContent = error.message; }
+    } catch (error) {
+      const authError = $('#auth-error');
+      if (authError) authError.textContent = error.message;
+      else if (authRequestSucceeded) renderBootstrapError(error);
+      else toast(error.message);
+    } finally {
+      if (submitButton?.isConnected) { submitButton.disabled = false; submitButton.textContent = originalLabel; }
+    }
   }
   if (event.target.id === 'address-form') {
     const body = Object.fromEntries(new FormData(event.target).entries());

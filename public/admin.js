@@ -189,7 +189,8 @@
       const { admin } = await post('/api/admin/auth/login', values);
       note.textContent = '';
       showApp(admin);
-      await refresh();
+      try { await refresh(); }
+      catch (error) { toast(`Signed in, but the Admin dashboard could not load: ${error.message}`, true); }
     } catch (error) {
       note.textContent = error.message || 'Sign-in could not be completed. Please try again.';
     } finally {

@@ -13,6 +13,7 @@ import { activeVariant, fromMoneyCents, toMoneyCents, validatePricingVariants } 
 import { cloudinaryConfig, isCloudinaryImageUrl, signCloudinaryUpload } from './lib/cloudinary.mjs';
 import { defaultHomepageBanners, validateHomepageBanners } from './lib/homepage-banners.mjs';
 import { isValidSummaryDate, isValidSummaryMonth, summarizeRiderDeliveries } from './lib/rider-delivery-summary.mjs';
+import { createSerialRequestQueue, enqueueWithDeadline } from './lib/serial-request-queue.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
@@ -1309,19 +1310,10 @@ async function handleAdminApi(req, res, url) {
   return send(res, 404, { error: 'Admin API route not found' });
 }
 
-let databaseRequestQueue = Promise.resolve();
-let databaseRequestQueueDepth = 0;
+const databaseRequestQueue = createSerialRequestQueue();
 let notificationWorkerRunning = false;
 function enqueueDatabaseOperation(callback) {
-  const enqueuedAt = Date.now();
-  databaseRequestQueueDepth++;
-  const operation = databaseRequestQueue.then(async () => {
-    const queueWaitMs = Date.now() - enqueuedAt;
-    databaseRequestQueueDepth = Math.max(0, databaseRequestQueueDepth - 1);
-    return callback({ queueWaitMs, queueDepthAtStart: databaseRequestQueueDepth });
-  });
-  databaseRequestQueue = operation.catch(() => {});
-  return operation;
+  return databaseRequestQueue.enqueue(callback);
 }
 async function withNotificationStateTransaction(callback) {
   if(!usePostgres){const changed=await callback(store);if(changed)persist();return changed;}
@@ -1517,26 +1509,20 @@ const server = http.createServer((req, res) => {
   if (usePostgres && req.url?.startsWith('/api/')) {
     let queueExpired = false;
     const queueTimeoutMs = boundedTimeoutMs('API_QUEUE_WAIT_TIMEOUT_MS', 20000);
-    const timer = setTimeout(() => {
-      queueExpired = true;
-      console.warn(JSON.stringify({
-        event: 'api_queue_wait_timeout',
-        method: req.method,
-        path: requestPath(req),
-        waitMs: queueTimeoutMs,
-        queuedRequests: databaseRequestQueueDepth
-      }));
-      respondQueueTimeout(res);
-    }, queueTimeoutMs);
-    timer.unref?.();
-    const operation = enqueueDatabaseOperation(async queueMetrics => {
-      clearTimeout(timer);
+    const operation = enqueueWithDeadline(databaseRequestQueue, async queueMetrics => {
       // Requests which timed out while queued must not execute later (most
       // importantly, this prevents stale queued POSTs from mutating state).
-      if (queueExpired || res.destroyed || res.writableEnded) return;
       return runPostgresRequest(req, res, queueMetrics);
+    }, {
+      timeoutMs: queueTimeoutMs,
+      onTimeout: () => {
+        queueExpired = true;
+        console.warn(JSON.stringify({ event: 'api_queue_wait_timeout', method: req.method, path: requestPath(req), waitMs: queueTimeoutMs, queuedRequests: databaseRequestQueue.depth }));
+        respondQueueTimeout(res);
+      },
+      shouldSkip: () => queueExpired || res.destroyed || res.writableEnded
     });
-    operation.finally(() => { clearTimeout(timer); scheduleNotificationWorkers(); }).catch(()=>{});
+    operation.finally(scheduleNotificationWorkers).catch(()=>{});
     return;
   }
   return handleRequest(req, res).finally(scheduleNotificationWorkers);
@@ -1579,20 +1565,29 @@ async function runPostgresRequest(req, res, queueMetrics = {}) {
     timings.handlerMs = Date.now() - phaseStartedAt;
     context = activeDatabaseRequest;
 
-    phase = context.response?.status >= 500 ? 'rollback' : 'write_and_commit';
-    phaseStartedAt = Date.now();
-    if (context.response?.status >= 500) await client.query('ROLLBACK');
-    else {
-      if (context.dirty) await writePostgresStore(client, store, { replace: true });
+    if (context.response?.status >= 500) {
+      phase = 'rollback';
+      phaseStartedAt = Date.now();
+      await client.query('ROLLBACK');
+      timings.rollbackMs = Date.now() - phaseStartedAt;
+    } else {
+      if (context.dirty) {
+        phase = 'write_store';
+        phaseStartedAt = Date.now();
+        await writePostgresStore(client, store, { replace: true });
+        timings.writeStoreMs = Date.now() - phaseStartedAt;
+      } else timings.writeStoreMs = 0;
+      phase = 'commit';
+      phaseStartedAt = Date.now();
       await client.query('COMMIT');
+      timings.commitMs = Date.now() - phaseStartedAt;
     }
-    timings.writeAndCommitMs = Date.now() - phaseStartedAt;
 
     if (context.response && !res.writableEnded) { res.writeHead(context.response.status, context.response.headers); res.end(context.response.responseBody); }
     else if (!res.writableEnded) { res.writeHead(500, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify({ error: 'The request did not produce a response.' })); }
   } catch (error) {
     phase = phase === 'write_and_commit' ? 'write_or_commit_error' : phase;
-    console.error('PostgreSQL request failed:', JSON.stringify({ path: requestPath(req), method: req.method, phase, code: error?.code || 'UNKNOWN', message: String(error?.message || 'unknown').slice(0, 180) }));
+    console.error('PostgreSQL request failed:', JSON.stringify({ path: requestPath(req), method: req.method, phase, code: error?.code || 'UNKNOWN' }));
     try { if (client) await client.query('ROLLBACK'); } catch {}
     if (!res.headersSent && !res.writableEnded) {
       const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
