@@ -120,7 +120,7 @@ const pool = usePostgres ? new Pool({
   // holding the serialized application-store queue indefinitely.
   statement_timeout: boundedTimeoutMs('PG_STATEMENT_TIMEOUT_MS', 12000),
   lock_timeout: boundedTimeoutMs('PG_LOCK_TIMEOUT_MS', 4000),
-  idle_in_transaction_session_timeout: boundedTimeoutMs('PG_IDLE_TX_TIMEOUT_MS', 15000),
+  idle_in_transaction_session_timeout: boundedTimeoutMs('PG_IDLE_TX_TIMEOUT_MS', 40000),
   application_name: 'zepto-grocery-app'
 }) : null;
 let postgresStartupClient = null;
@@ -1419,7 +1419,8 @@ function directJson(res, status, body) {
     'x-content-type-options': 'nosniff',
     'x-frame-options': 'DENY',
     'referrer-policy': 'strict-origin-when-cross-origin',
-    'permissions-policy': 'camera=(), microphone=(), geolocation=(self)'
+    'permissions-policy': 'camera=(), microphone=(), geolocation=(self)',
+    'content-security-policy': "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://www.googleapis.com https://api.cloudinary.com; frame-src https://accounts.google.com; upgrade-insecure-requests"
   };
   if (isProduction) headers['strict-transport-security'] = 'max-age=31536000; includeSubDomains';
   res.writeHead(status, headers);
