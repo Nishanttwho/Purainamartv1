@@ -1388,16 +1388,36 @@ async function drainNotificationOutbox() {
   }catch(error){console.error('Notification delivery worker failed; pending jobs remain persisted.');}
   finally{notificationWorkerRunning=false;}
 }
-let notificationWorkerTimer=null;
+let notificationWorkerTimer = null;
+let notificationWorkerCycleRunning = false;
 function scheduleNotificationWorkers() {
-  if(notificationWorkerTimer)return;
-  notificationWorkerTimer=setTimeout(async()=>{notificationWorkerTimer=null;await processDueCampaigns();await drainNotificationOutbox();},250);
+  if (notificationWorkerTimer || notificationWorkerCycleRunning) return;
+  notificationWorkerTimer = setTimeout(async () => {
+    notificationWorkerTimer = null;
+    if (notificationWorkerCycleRunning) return;
+    notificationWorkerCycleRunning = true;
+    try {
+      await processDueCampaigns();
+      await drainNotificationOutbox();
+    } finally {
+      notificationWorkerCycleRunning = false;
+    }
+  }, 250);
   notificationWorkerTimer.unref?.();
 }
 const notificationWorkerInterval=setInterval(scheduleNotificationWorkers,3000);notificationWorkerInterval.unref?.();
 function directJson(res, status, body) {
   if (res.headersSent || res.writableEnded || res.destroyed) return;
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  const headers = {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+    'permissions-policy': 'camera=(), microphone=(), geolocation=(self)'
+  };
+  if (isProduction) headers['strict-transport-security'] = 'max-age=31536000; includeSubDomains';
+  res.writeHead(status, headers);
   res.end(JSON.stringify(body));
 }
 
