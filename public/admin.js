@@ -6,10 +6,28 @@
   const login = $('#login'), app = $('#app'), editor = $('#editor');
 
   async function api(url, options = {}) {
-    const response = await fetch(url, { credentials: 'same-origin', ...options, headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) } });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) { if (response.status === 401 && !url.includes('/auth/')) showLogin(); throw new Error(body.error || `Request failed (${response.status})`); }
-    return body;
+    const isReadOnly = String(options.method || 'GET').toUpperCase() === 'GET';
+    const controller = isReadOnly ? new AbortController() : null;
+    const timeout = controller ? window.setTimeout(() => controller.abort(), 25000) : null;
+    try {
+      const response = await fetch(url, {
+        credentials: 'same-origin',
+        ...options,
+        ...(controller ? { signal: controller.signal } : {}),
+        headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) }
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401 && !url.includes('/auth/')) showLogin();
+        throw new Error(body.error || `Request failed (${response.status})`);
+      }
+      return body;
+    } catch (error) {
+      if (controller?.signal.aborted) throw new Error('The server took too long to respond. Refresh the page and try again.');
+      throw error;
+    } finally {
+      if (timeout !== null) window.clearTimeout(timeout);
+    }
   }
   const post = (url, body) => api(url, { method: 'POST', body: JSON.stringify(body) });
   const patch = (url, body) => api(url, { method: 'PATCH', body: JSON.stringify(body) });
@@ -157,7 +175,27 @@
   }
   function showOrder(id){const o=state.data.orders.find(x=>x.id===id);if(!o)return;$('#editor-title').textContent=`Order ${o.displayId}`;$('#editor-save').classList.add('hidden');$('#editor-fields').innerHTML=`<div class="customer-detail full"><p><strong>${escapeHtml(o.status)}</strong> · ${escapeHtml(o.paymentMethod)} (${escapeHtml(o.paymentStatus)})</p><p>Customer ${escapeHtml(o.customer?.phone||o.customer?.email||'Guest')} · Rider ${escapeHtml(o.rider?.name||'Unassigned')}</p><p>Delivery area ${escapeHtml(o.deliveryArea?.name||o.address?.deliveryAreaName||'—')} · Delivery charge ${money(o.delivery)}</p><p>Subtotal ${money(o.subtotal)} · Discount ${money(o.discount)} (${escapeHtml(o.couponCode||'no coupon')}) · Total ${money(o.total)}</p>${o.paymentCollection?`<p>Rider collection: ${money(o.paymentCollection.amount)} via ${escapeHtml(o.paymentCollection.method)} · ${escapeHtml(o.paymentCollection.collectedAt||'')}</p>`:''}${o.paymentVerification?`<p>Provider payment: ${escapeHtml(o.paymentVerification.status)} · ${escapeHtml(o.paymentVerification.transactionReference||'No transaction reference')}</p>`:''}${o.paymentReconciliation?`<p><strong>Payment reconciliation:</strong> ${escapeHtml(o.paymentReconciliation.status)} · ${escapeHtml(o.paymentReconciliation.reason)}</p>`:''}${o.inventoryReconciliationRequired?'<p><strong>Inventory reconciliation required after pickup cancellation.</strong></p>':''}<h3>Items</h3>${o.items.map(i=>`<p>${escapeHtml(i.name)}${i.variantLabel ? ` &middot; ${escapeHtml(i.variantLabel)}` : ''} &times; ${i.quantity} &middot; ${money(i.price)} each &middot; Line ${money(i.lineTotal)}</p>`).join('')}<h3>Timeline</h3>${o.timeline.map(t=>`<p>${t.complete?'✓':'○'} ${escapeHtml(t.label)} ${t.at?`· ${new Date(t.at).toLocaleString()}`:''}${t.reason?` · ${escapeHtml(t.reason)}`:''}</p>`).join('')}${o.cancellation?`<p>Cancelled by ${escapeHtml(o.cancellation.actorType)} (${escapeHtml(o.cancellation.actorId)}) · ${new Date(o.cancellation.at).toLocaleString()} · previous state ${escapeHtml(o.cancellation.previousStatus)} · reason: ${escapeHtml(o.cancellation.reason)}</p>`:''}${o.riderRejections?.length?`<h3>Rider rejections</h3>${o.riderRejections.map(r=>`<p>${escapeHtml(r.riderId)} · ${escapeHtml(r.reason)} · ${new Date(r.at).toLocaleString()}</p>`).join('')}`:''}</div>`;editor.showModal();}
 
-  $('#login-form').addEventListener('submit',async e=>{e.preventDefault();const values=Object.fromEntries(new FormData(e.currentTarget).entries());try{const {admin}=await post('/api/admin/auth/login',values);showApp(admin);await refresh();}catch(error){$('#login-note').textContent=error.message;}});
+  $('#login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const note = $('#login-note');
+    if (button?.disabled) return;
+    const values = Object.fromEntries(new FormData(form).entries());
+    const originalLabel = button?.textContent || 'Sign in securely';
+    if (button) { button.disabled = true; button.textContent = 'Signing in…'; }
+    note.textContent = 'Checking your credentials securely…';
+    try {
+      const { admin } = await post('/api/admin/auth/login', values);
+      note.textContent = '';
+      showApp(admin);
+      await refresh();
+    } catch (error) {
+      note.textContent = error.message || 'Sign-in could not be completed. Please try again.';
+    } finally {
+      if (button?.isConnected) { button.disabled = false; button.textContent = originalLabel; }
+    }
+  });
   $('#logout').addEventListener('click',async()=>{try{await import('/push-client.js').then(push=>push.deactivateWebPush('admin'));}catch{}try{await post('/api/admin/auth/logout',{});}finally{showLogin();}});
   $('#nav').addEventListener('click',e=>{const button=e.target.closest('[data-view]');if(button){state.view=button.dataset.view;paint();}});
   document.addEventListener('change',e=>{if(e.target.matches('[data-upload-input]')&&e.target.files?.[0])uploadImageFile(e.target.files[0],e.target.closest('[data-image-uploader]'));if(e.target.matches('[data-banner-action]')){const card=e.target.closest('[data-banner-card]'),type=e.target.value,target=card.querySelector('[data-banner-target]');target.hidden=!['product','category'].includes(type);const select=target.querySelector('select');if(select){const list=type==='category'?state.data.categories.filter(row=>row.id!=='all'&&row.isActive!==false):state.data.products.filter(row=>row.isActive!==false);select.innerHTML=`<option value="">Choose ${type}</option>${list.map(row=>`<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}</option>`).join('')}`;target.firstChild.textContent=type==='category'?'Category':'Product';}card.querySelector('[data-banner-page]').hidden=type!=='page';card.querySelector('[data-banner-url]').hidden=type!=='external';}});
