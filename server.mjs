@@ -105,6 +105,11 @@ function notificationTemplateDefaults() {
   return Object.fromEntries(['order_received','order_status','rider_assigned','delivery_status','payment_update','referral_reward','promotional_campaign','announcement','rider_order','admin_operational'].map(eventType => [eventType,{ eventType,enabled:true,inAppEnabled:true,pushEnabled:true,updatedAt:null,updatedBy:null }]));
 }
 
+function boundedTimeoutMs(name, fallback, { min = 1000, max = 120000 } = {}) {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value >= min && value <= max ? value : fallback;
+}
+
 const pool = usePostgres ? new Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.PG_POOL_MAX || 5),
@@ -113,9 +118,9 @@ const pool = usePostgres ? new Pool({
   idleTimeoutMillis: 30000,
   // Server-side limits make failed locks and slow SQL roll back instead of
   // holding the serialized application-store queue indefinitely.
-  statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 12000),
-  lock_timeout: Number(process.env.PG_LOCK_TIMEOUT_MS || 4000),
-  idle_in_transaction_session_timeout: Number(process.env.PG_IDLE_TX_TIMEOUT_MS || 15000),
+  statement_timeout: boundedTimeoutMs('PG_STATEMENT_TIMEOUT_MS', 12000),
+  lock_timeout: boundedTimeoutMs('PG_LOCK_TIMEOUT_MS', 4000),
+  idle_in_transaction_session_timeout: boundedTimeoutMs('PG_IDLE_TX_TIMEOUT_MS', 15000),
   application_name: 'zepto-grocery-app'
 }) : null;
 let postgresStartupClient = null;
@@ -1503,7 +1508,7 @@ const server = http.createServer((req, res) => {
 
   if (usePostgres && req.url?.startsWith('/api/')) {
     let queueExpired = false;
-    const queueTimeoutMs = Math.max(1000, Number(process.env.API_QUEUE_WAIT_TIMEOUT_MS || 20000));
+    const queueTimeoutMs = boundedTimeoutMs('API_QUEUE_WAIT_TIMEOUT_MS', 20000);
     const timer = setTimeout(() => {
       queueExpired = true;
       respondQueueTimeout(res);
