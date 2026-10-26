@@ -1310,10 +1310,17 @@ async function handleAdminApi(req, res, url) {
 }
 
 let databaseRequestQueue = Promise.resolve();
+let databaseRequestQueueDepth = 0;
 let notificationWorkerRunning = false;
 function enqueueDatabaseOperation(callback) {
-  const operation=databaseRequestQueue.then(callback);
-  databaseRequestQueue=operation.catch(()=>{});
+  const enqueuedAt = Date.now();
+  databaseRequestQueueDepth++;
+  const operation = databaseRequestQueue.then(async () => {
+    const queueWaitMs = Date.now() - enqueuedAt;
+    databaseRequestQueueDepth = Math.max(0, databaseRequestQueueDepth - 1);
+    return callback({ queueWaitMs, queueDepthAtStart: databaseRequestQueueDepth });
+  });
+  databaseRequestQueue = operation.catch(() => {});
   return operation;
 }
 async function withNotificationStateTransaction(callback) {
@@ -1512,15 +1519,22 @@ const server = http.createServer((req, res) => {
     const queueTimeoutMs = boundedTimeoutMs('API_QUEUE_WAIT_TIMEOUT_MS', 20000);
     const timer = setTimeout(() => {
       queueExpired = true;
+      console.warn(JSON.stringify({
+        event: 'api_queue_wait_timeout',
+        method: req.method,
+        path: requestPath(req),
+        waitMs: queueTimeoutMs,
+        queuedRequests: databaseRequestQueueDepth
+      }));
       respondQueueTimeout(res);
     }, queueTimeoutMs);
     timer.unref?.();
-    const operation = enqueueDatabaseOperation(async () => {
+    const operation = enqueueDatabaseOperation(async queueMetrics => {
       clearTimeout(timer);
       // Requests which timed out while queued must not execute later (most
       // importantly, this prevents stale queued POSTs from mutating state).
       if (queueExpired || res.destroyed || res.writableEnded) return;
-      return runPostgresRequest(req, res);
+      return runPostgresRequest(req, res, queueMetrics);
     });
     operation.finally(() => { clearTimeout(timer); scheduleNotificationWorkers(); }).catch(()=>{});
     return;
@@ -1528,35 +1542,76 @@ const server = http.createServer((req, res) => {
   return handleRequest(req, res).finally(scheduleNotificationWorkers);
 });
 
-async function runPostgresRequest(req, res) {
+async function runPostgresRequest(req, res, queueMetrics = {}) {
   let client;
+  const requestStartedAt = Date.now();
+  const timings = { queueWaitMs: Number(queueMetrics.queueWaitMs || 0), queueDepthAtStart: Number(queueMetrics.queueDepthAtStart || 0) };
+  let phase = 'pool_connect';
+  let phaseStartedAt = Date.now();
+  let context = null;
   try {
     client = await pool.connect();
+    timings.poolConnectMs = Date.now() - phaseStartedAt;
+
+    phase = 'begin_transaction';
+    phaseStartedAt = Date.now();
     await client.query('BEGIN');
+    timings.beginTransactionMs = Date.now() - phaseStartedAt;
+
+    phase = 'advisory_lock';
+    phaseStartedAt = Date.now();
     await client.query('SELECT pg_advisory_xact_lock($1)', [1718343473]);
+    timings.advisoryLockWaitMs = Date.now() - phaseStartedAt;
+
+    phase = 'read_store_snapshot';
+    phaseStartedAt = Date.now();
     const latest = await readPostgresStore(client);
+    timings.readStoreSnapshotMs = Date.now() - phaseStartedAt;
     if (!latest) throw new Error('PostgreSQL store unexpectedly has no initialized records.');
     store = latest;
     products = store.products;
     categories = store.categories;
     activeDatabaseRequest = { res, dirty: false, response: null };
+
+    phase = 'request_handler';
+    phaseStartedAt = Date.now();
     await handleRequest(req, res);
-    const context = activeDatabaseRequest;
+    timings.handlerMs = Date.now() - phaseStartedAt;
+    context = activeDatabaseRequest;
+
+    phase = context.response?.status >= 500 ? 'rollback' : 'write_and_commit';
+    phaseStartedAt = Date.now();
     if (context.response?.status >= 500) await client.query('ROLLBACK');
     else {
       if (context.dirty) await writePostgresStore(client, store, { replace: true });
       await client.query('COMMIT');
     }
+    timings.writeAndCommitMs = Date.now() - phaseStartedAt;
+
     if (context.response && !res.writableEnded) { res.writeHead(context.response.status, context.response.headers); res.end(context.response.responseBody); }
     else if (!res.writableEnded) { res.writeHead(500, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify({ error: 'The request did not produce a response.' })); }
   } catch (error) {
-    console.error('PostgreSQL request failed:', error.message);
+    phase = phase === 'write_and_commit' ? 'write_or_commit_error' : phase;
+    console.error('PostgreSQL request failed:', JSON.stringify({ path: requestPath(req), method: req.method, phase, code: error?.code || 'UNKNOWN', message: String(error?.message || 'unknown').slice(0, 180) }));
     try { if (client) await client.query('ROLLBACK'); } catch {}
     if (!res.headersSent && !res.writableEnded) {
       const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
-      res.writeHead(503, headers); res.end(JSON.stringify({ error: 'The application data store is temporarily unavailable. Please retry.' }));
+      res.writeHead(503, headers); res.end(JSON.stringify({ error: 'The application data store is temporarily unavailable. Please retry.', code: phase === 'advisory_lock' ? 'DATABASE_LOCK_TIMEOUT' : 'DATABASE_OPERATION_FAILED' }));
     }
   } finally {
+    const totalMs = Date.now() - requestStartedAt;
+    timings.totalMs = totalMs;
+    if (totalMs >= 1500 || timings.queueWaitMs >= 500) {
+      console.warn(JSON.stringify({
+        event: 'slow_postgres_api_request',
+        method: req.method,
+        path: requestPath(req),
+        status: context?.response?.status || res.statusCode,
+        phase,
+        ...timings,
+        totalMs
+      }));
+    }
     activeDatabaseRequest = null;
     client?.release();
   }
