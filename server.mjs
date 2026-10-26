@@ -1462,9 +1462,15 @@ function respondQueueTimeout(res) {
 const server = http.createServer((req, res) => {
   req.res = res;
 
-  // Keep liveness, readiness, and unconfigured Google OAuth diagnostics
-  // independent of database-store loading.
-  if (handleIndependentHealth(req, res)) return;
+  // Keep liveness and readiness independent of the serialized database queue.
+  const healthPath = requestPath(req);
+  if (req.method === 'GET' && ['/api/health', '/api/health/ready'].includes(healthPath)) {
+    void handleIndependentHealth(req, res);
+    return;
+  }
+
+  // Google OAuth remains unconfigured until credentials are supplied, but
+  // report that explicitly without waiting for an application-store snapshot.
   if (usePostgres && req.method === 'POST' &&
       ['/api/auth/google/start', '/api/auth/google/callback'].includes(requestPath(req)) &&
       (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET)) {
