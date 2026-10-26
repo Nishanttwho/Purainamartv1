@@ -23,6 +23,8 @@ after(async () => { if (child && child.exitCode === null) { child.kill(); await 
 test('health endpoints, bootstrap and unconfigured Google OAuth return finite responses', async () => {
   const healthResponse = await fetch(base() + '/api/health');
   assert.equal(healthResponse.status, 200);
+  assert.match(healthResponse.headers.get('content-security-policy') || '', /default-src 'self'/);
+  assert.match(healthResponse.headers.get('x-content-type-options') || '', /nosniff/);
   assert.deepEqual(await healthResponse.json(), { status: 'ok', mode: 'development', database: 'not_configured', authConfigured: { google: false }, payments: { cod: true, online: false } });
 
   const readyResponse = await fetch(base() + '/api/health/ready');
