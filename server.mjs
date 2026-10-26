@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { isIPv4 } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
 import { Pool } from 'pg';
@@ -13,6 +14,7 @@ import { activeVariant, fromMoneyCents, toMoneyCents, validatePricingVariants } 
 import { cloudinaryConfig, isCloudinaryImageUrl, signCloudinaryUpload } from './lib/cloudinary.mjs';
 import { defaultHomepageBanners, validateHomepageBanners } from './lib/homepage-banners.mjs';
 import { isValidSummaryDate, isValidSummaryMonth, summarizeRiderDeliveries } from './lib/rider-delivery-summary.mjs';
+import { createSerialRequestQueue, enqueueWithDeadline } from './lib/serial-request-queue.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
@@ -21,6 +23,16 @@ const dbPath = process.env.STORE_PATH ? path.resolve(process.env.STORE_PATH) : p
 const usePostgres = Boolean(process.env.DATABASE_URL);
 const port = Number(process.env.PORT || 4173);
 const isProduction = process.env.NODE_ENV === 'production';
+function boundedTimeoutMs(name, fallback) {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed >= 250 && parsed <= 120000 ? Math.round(parsed) : fallback;
+}
+const devHost = process.env.DEV_HOST || '127.0.0.1';
+if (!isProduction && process.env.DEV_HOST) {
+  const octets = devHost.split('.').map(Number);
+  const isPrivateIpv4 = isIPv4(devHost) && (octets[0] === 10 || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) || (octets[0] === 192 && octets[1] === 168));
+  if (!isPrivateIpv4) throw new Error('DEV_HOST must be a private IPv4 address; do not bind the development server to all interfaces.');
+}
 const testAuthEnabled = process.env.NODE_ENV === 'test' && process.env.APP_TEST_AUTH === '1';
 const demoOtp = '246810';
 const demoRiderPhone = String(process.env.DEMO_RIDER_PHONE || '9000000000').replace(/\D/g, '').slice(-10);
@@ -105,7 +117,7 @@ function notificationTemplateDefaults() {
   return Object.fromEntries(['order_received','order_status','rider_assigned','delivery_status','payment_update','referral_reward','promotional_campaign','announcement','rider_order','admin_operational'].map(eventType => [eventType,{ eventType,enabled:true,inAppEnabled:true,pushEnabled:true,updatedAt:null,updatedBy:null }]));
 }
 
-const pool = usePostgres ? new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.PG_POOL_MAX || 5), ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000, application_name: 'zepto-grocery-app' }) : null;
+const pool = usePostgres ? new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.PG_POOL_MAX || 5), ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000, statement_timeout: boundedTimeoutMs('PG_STATEMENT_TIMEOUT_MS', 12000), lock_timeout: boundedTimeoutMs('PG_LOCK_TIMEOUT_MS', 4000), idle_in_transaction_session_timeout: boundedTimeoutMs('PG_IDLE_TX_TIMEOUT_MS', 40000), application_name: 'zepto-grocery-app' }) : null;
 let postgresStartupClient = null;
 let postgresNeedsInitialization = false;
 let store;
@@ -1292,12 +1304,10 @@ async function handleAdminApi(req, res, url) {
   return send(res, 404, { error: 'Admin API route not found' });
 }
 
-let databaseRequestQueue = Promise.resolve();
+const databaseRequestQueue = createSerialRequestQueue();
 let notificationWorkerRunning = false;
 function enqueueDatabaseOperation(callback) {
-  const operation=databaseRequestQueue.then(callback);
-  databaseRequestQueue=operation.catch(()=>{});
-  return operation;
+  return databaseRequestQueue.enqueue(callback);
 }
 async function withNotificationStateTransaction(callback) {
   if(!usePostgres){const changed=await callback(store);if(changed)persist();return changed;}
@@ -1385,43 +1395,148 @@ function scheduleNotificationWorkers() {
 const notificationWorkerInterval=setInterval(scheduleNotificationWorkers,3000);notificationWorkerInterval.unref?.();
 const server = http.createServer((req, res) => {
   req.res = res;
+  const path = requestPath(req);
+  if (req.method === 'GET' && ['/api/health', '/api/health/ready'].includes(path)) {
+    void handleIndependentHealth(req, res);
+    return;
+  }
   if (usePostgres && req.url?.startsWith('/api/')) {
-    const operation = enqueueDatabaseOperation(() => runPostgresRequest(req, res));
+    let expired = false;
+    const timeoutMs = boundedTimeoutMs('API_QUEUE_WAIT_TIMEOUT_MS', 20000);
+    const operation = enqueueWithDeadline(databaseRequestQueue, metrics => runPostgresRequest(req, res, metrics), {
+      timeoutMs,
+      onTimeout: () => {
+        expired = true;
+        console.warn(JSON.stringify({ event: 'api_queue_wait_timeout', method: req.method, path, waitMs: timeoutMs, queuedRequests: databaseRequestQueue.depth }));
+        directJson(res, 503, { error: 'The application is busy processing other requests. Please retry shortly.', code: 'DATABASE_QUEUE_TIMEOUT' });
+      },
+      shouldSkip: () => expired || res.destroyed || res.writableEnded
+    });
     operation.finally(scheduleNotificationWorkers).catch(()=>{});
     return;
   }
   return handleRequest(req, res).finally(scheduleNotificationWorkers);
 });
 
-async function runPostgresRequest(req, res) {
+function requestPath(req) {
+  try { return new URL(req.url || '/', 'http://localhost').pathname; }
+  catch { return ''; }
+}
+
+function directJson(res, status, body) {
+  if (res.headersSent || res.writableEnded || res.destroyed) return;
+  const headers = {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+    'permissions-policy': 'camera=(), microphone=(), geolocation=(self)',
+    'content-security-policy': "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://www.googleapis.com https://api.cloudinary.com; frame-src https://accounts.google.com" + (isProduction ? '; upgrade-insecure-requests' : '')
+  };
+  if (isProduction) headers['strict-transport-security'] = 'max-age=31536000; includeSubDomains';
+  res.writeHead(status, headers);
+  res.end(JSON.stringify(body));
+}
+
+async function handleIndependentHealth(req, res) {
+  const path = requestPath(req);
+  if (path === '/api/health') {
+    directJson(res, 200, {
+      status: 'ok',
+      mode: isProduction ? 'production' : 'development',
+      ...(usePostgres ? { database: 'configured' } : {}),
+      authConfigured: { google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) },
+      payments: { cod: true, online: false }
+    });
+    return;
+  }
+  if (!usePostgres) {
+    directJson(res, 200, { status: 'ready', database: 'not_configured', ready: true });
+    return;
+  }
+  let timeout;
+  try {
+    const result = await Promise.race([
+      pool.query({ text: 'SELECT 1 AS ok', query_timeout: 1200 }),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(Object.assign(new Error('database readiness timeout'), { code: 'DB_READINESS_TIMEOUT' })), 1500);
+        timeout.unref?.();
+      })
+    ]);
+    directJson(res, 200, { status: 'ready', database: 'connected', ready: true, check: Number(result.rows[0]?.ok) === 1 ? 'passed' : 'unknown' });
+  } catch (error) {
+    directJson(res, 503, { status: 'not_ready', database: 'unavailable', ready: false, code: error?.code === 'DB_READINESS_TIMEOUT' ? 'DB_READINESS_TIMEOUT' : 'DB_READINESS_FAILED' });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function runPostgresRequest(req, res, queueMetrics = {}) {
   let client;
+  const requestStartedAt = Date.now();
+  const timings = { queueWaitMs: Number(queueMetrics.queueWaitMs || 0), queueDepthAtStart: Number(queueMetrics.queueDepthAtStart || 0) };
+  let phase = 'pool_connect';
+  let phaseStartedAt = Date.now();
+  let context = null;
   try {
     client = await pool.connect();
+    timings.poolConnectMs = Date.now() - phaseStartedAt;
+    phase = 'begin_transaction';
+    phaseStartedAt = Date.now();
     await client.query('BEGIN');
+    timings.beginTransactionMs = Date.now() - phaseStartedAt;
+    phase = 'advisory_lock';
+    phaseStartedAt = Date.now();
     await client.query('SELECT pg_advisory_xact_lock($1)', [1718343473]);
+    timings.advisoryLockWaitMs = Date.now() - phaseStartedAt;
+    phase = 'read_store_snapshot';
+    phaseStartedAt = Date.now();
     const latest = await readPostgresStore(client);
+    timings.readStoreSnapshotMs = Date.now() - phaseStartedAt;
     if (!latest) throw new Error('PostgreSQL store unexpectedly has no initialized records.');
     store = latest;
     products = store.products;
     categories = store.categories;
     activeDatabaseRequest = { res, dirty: false, response: null };
+    phase = 'request_handler';
+    phaseStartedAt = Date.now();
     await handleRequest(req, res);
-    const context = activeDatabaseRequest;
-    if (context.response?.status >= 500) await client.query('ROLLBACK');
+    timings.handlerMs = Date.now() - phaseStartedAt;
+    context = activeDatabaseRequest;
+    if (context.response?.status >= 500) {
+      phase = 'rollback';
+      phaseStartedAt = Date.now();
+      await client.query('ROLLBACK');
+      timings.rollbackMs = Date.now() - phaseStartedAt;
+    }
     else {
-      if (context.dirty) await writePostgresStore(client, store, { replace: true });
+      if (context.dirty) {
+        phase = 'write_store';
+        phaseStartedAt = Date.now();
+        await writePostgresStore(client, store, { replace: true });
+        timings.writeStoreMs = Date.now() - phaseStartedAt;
+      } else timings.writeStoreMs = 0;
+      phase = 'commit';
+      phaseStartedAt = Date.now();
       await client.query('COMMIT');
+      timings.commitMs = Date.now() - phaseStartedAt;
     }
     if (context.response && !res.writableEnded) { res.writeHead(context.response.status, context.response.headers); res.end(context.response.responseBody); }
     else if (!res.writableEnded) { res.writeHead(500, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify({ error: 'The request did not produce a response.' })); }
   } catch (error) {
-    console.error('PostgreSQL request failed:', error.message);
+    console.error('PostgreSQL request failed:', JSON.stringify({ path: requestPath(req), method: req.method, phase, code: error?.code || 'UNKNOWN' }));
     try { if (client) await client.query('ROLLBACK'); } catch {}
     if (!res.headersSent && !res.writableEnded) {
       const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
-      res.writeHead(503, headers); res.end(JSON.stringify({ error: 'The application data store is temporarily unavailable. Please retry.' }));
+      res.writeHead(503, headers); res.end(JSON.stringify({ error: 'The application data store is temporarily unavailable. Please retry.', code: phase === 'advisory_lock' ? 'DATABASE_LOCK_TIMEOUT' : 'DATABASE_OPERATION_FAILED' }));
     }
   } finally {
+    const totalMs = Date.now() - requestStartedAt;
+    timings.totalMs = totalMs;
+    if (totalMs >= 1500 || timings.queueWaitMs >= 500) {
+      console.warn(JSON.stringify({ event: 'slow_postgres_api_request', method: req.method, path: requestPath(req), status: context?.response?.status || res.statusCode, phase, ...timings }));
+    }
     activeDatabaseRequest = null;
     client?.release();
   }
@@ -1433,7 +1548,8 @@ async function handleRequest(req, res) {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
   if (isProduction) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://www.googleapis.com https://api.cloudinary.com; frame-src https://accounts.google.com; upgrade-insecure-requests");
+  const contentSecurityPolicy = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://www.googleapis.com https://api.cloudinary.com; frame-src https://accounts.google.com";
+  res.setHeader('Content-Security-Policy', `${contentSecurityPolicy}${isProduction ? '; upgrade-insecure-requests' : ''}`);
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (req.method === 'GET' && url.pathname === '/api/notifications/config') {
@@ -2141,4 +2257,5 @@ async function handleRequest(req, res) {
   }
 }
 
-server.listen(port, isProduction ? (process.env.HOST || '0.0.0.0') : '127.0.0.1', () => console.log(`Zepto local recreation listening at ${isProduction ? (process.env.HOST || '0.0.0.0') : '127.0.0.1'}:${port} (${isProduction ? 'production' : 'development'} mode)`));
+const listenHost = isProduction ? (process.env.HOST || '0.0.0.0') : devHost;
+server.listen(port, listenHost, () => console.log(`Zepto local recreation listening at ${listenHost}:${port} (${isProduction ? 'production' : 'development'} mode)`));

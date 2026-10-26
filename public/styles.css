@@ -154,3 +154,18 @@ html.modal-open,body.modal-open{overflow:hidden;overscroll-behavior:none}#overla
 .stepper button:disabled{opacity:.4;cursor:not-allowed}
 
 .homepage-banner-action{min-width:0}
+.category-photo-fallback{display:grid;place-items:center;width:100%;height:100%;font-size:inherit}
+.hero-fruit-fallback{font-size:94px;line-height:1;filter:drop-shadow(0 9px 8px #c9b4d2);transform:rotate(8deg)}
+
+/* Avoid accidental text selection and browser tap flashes on touch controls. */
+button,a,[role="button"],[data-action],[data-view],.product-card,.product-visual,.category-tile,.category-side button{
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Keep text editable and selectable wherever users enter or edit content. */
+input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]{
+  -webkit-user-select: text;
+  user-select: text;
+}

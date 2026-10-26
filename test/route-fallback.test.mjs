@@ -27,3 +27,21 @@ test('unknown document routes redirect home while valid portals, API responses, 
   const missingApi = await fetch(base() + '/api/not-a-real-endpoint', { redirect: 'manual' }); assert.equal(missingApi.status, 404); assert.equal(missingApi.headers.get('location'), null); assert.equal((await missingApi.json()).code, 'NOT_FOUND');
   const traversal = await fetch(base() + '/..%2fserver.mjs', { redirect: 'manual' }); assert.equal(traversal.status, 403);
 });
+
+test('health, first-page bootstrap, and product search return promptly from an isolated store', async () => {
+  const ready = await fetch(base() + '/api/health/ready', { signal: AbortSignal.timeout(5000) });
+  assert.equal(ready.status, 200);
+  assert.equal((await ready.json()).ready, true);
+
+  const bootstrapResponse = await fetch(base() + '/api/bootstrap', { signal: AbortSignal.timeout(5000) });
+  assert.equal(bootstrapResponse.status, 200);
+  const bootstrap = await bootstrapResponse.json();
+  assert.ok(bootstrap.categories.length > 0);
+  assert.ok(bootstrap.products.length > 0);
+  assert.ok(Array.isArray(bootstrap.homepageBanners));
+
+  const productsResponse = await fetch(base() + '/api/products?q=avocado', { signal: AbortSignal.timeout(5000) });
+  assert.equal(productsResponse.status, 200);
+  const products = await productsResponse.json();
+  assert.ok(products.products.some(product => product.id === 'p101'));
+});

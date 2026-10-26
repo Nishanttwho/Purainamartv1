@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test",
+    "test": "node --test \"test/*.test.mjs\"",
     "test:postgres": "node --test test/postgres.integration.test.mjs",
     "db:migrate": "node scripts/migrate-postgres.mjs",
     "db:import:dry-run": "node scripts/import-json-store.mjs --dry-run",

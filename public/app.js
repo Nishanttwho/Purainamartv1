@@ -20,10 +20,30 @@ const money = value => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
 async function api(url, options = {}) {
-  const response = await fetch(url, { credentials: 'same-origin', ...options, headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) } });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Something went wrong');
-  return data;
+  const isReadOnly = String(options.method || 'GET').toUpperCase() === 'GET';
+  const controller = isReadOnly ? new AbortController() : null;
+  const timeout = controller ? window.setTimeout(() => controller.abort(), 25000) : null;
+  try {
+    const response = await fetch(url, {
+      credentials: 'same-origin',
+      ...options,
+      ...(controller ? { signal: controller.signal } : {}),
+      headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data.error || `Request failed (HTTP ${response.status}).`);
+      error.code = data.code || 'HTTP_ERROR';
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    if (controller?.signal.aborted) throw new Error('The server took too long to respond. Check your connection and try again.');
+    throw error;
+  } finally {
+    if (timeout !== null) window.clearTimeout(timeout);
+  }
 }
 const post = (url, body = {}, headers = {}) => api(url, { method: 'POST', body: JSON.stringify(body), headers });
 let initialHashHandled = false;
@@ -45,9 +65,39 @@ async function bootstrap() {
   const data = await api('/api/bootstrap');
   Object.assign(state, data);
   if (state.user) import('/push-client.js').then(push => push.syncGrantedWebPush('customer')).catch(() => {});
-  if (pendingReferralCode && !state.user) { try { state.referralInvite = await api('/api/referrals/validate?code=' + encodeURIComponent(pendingReferralCode)); } catch { state.referralInvite = { valid: false, reason: 'unavailable' }; } }
-  if(!initialHashHandled){initialHashHandled=true;const requested=location.hash.slice(1);if(['orders','notifications','referrals','offers'].includes(requested)){await handleNotificationHash(true);return;}}
+  // Render the catalog as soon as bootstrap data arrives. Referral validation
+  // and deep-link data are secondary requests and must not keep the home blank.
   render();
+  const referralCode = pendingReferralCode;
+  if (referralCode && !state.user) {
+    api('/api/referrals/validate?code=' + encodeURIComponent(referralCode)).then(invite => {
+      if (state.user || pendingReferralCode !== referralCode) return;
+      state.referralInvite = invite;
+      if (state.view === 'home') render();
+    }).catch(() => {
+      if (state.user || pendingReferralCode !== referralCode) return;
+      state.referralInvite = { valid: false, reason: 'unavailable' };
+      if (state.view === 'home') render();
+    });
+  }
+  if (!initialHashHandled) {
+    initialHashHandled = true;
+    if (['orders', 'notifications', 'referrals', 'offers'].includes(location.hash.slice(1))) {
+      handleNotificationHash(true).catch(error => toast(error.message));
+    }
+  }
+}
+function showStoreLoadError(error) {
+  console.error('[Puraina Mart] Store startup failed:', error);
+  const main = $('#main-content');
+  main.innerHTML = `<div class="empty-state"><div class="empty-art">☁</div><h2>Could not load the store</h2><p>${escapeHtml(error?.message || 'Check your connection and try again.')}</p><button id="retry-store-load" class="primary-button" type="button">Retry</button></div>`;
+  $('#retry-store-load').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = 'Retrying…';
+    try { await bootstrap(); }
+    catch (retryError) { showStoreLoadError(retryError); }
+  });
 }
 function toast(message) {
   const root = $('#toast-root');
@@ -68,14 +118,45 @@ function priceMarkup(price, mrp, large = false) { const hasReference = mrp != nu
 function productImage(product, className = 'product-photo', source = null) {
   const imageSource = source || distinctProductImageSources(product)[0];
   return imageSource
-    ? `<img class="${className}" src="${escapeHtml(imageSource)}" alt="${escapeHtml(product.name)}" loading="lazy"/>`
+    ? `<img class="${className}" src="${escapeHtml(imageSource)}" alt="${escapeHtml(product.name)}" data-fallback-emoji="${escapeHtml(product?.emoji || '🛍️')}" loading="lazy"/>`
     : `<span class="${className === 'product-photo' ? 'product-emoji' : 'product-emoji-fallback'}">${escapeHtml(product?.emoji || '🛍️')}</span>`;
 }
 function categoryImage(category) {
   return category?.image
-    ? `<img class="category-photo" src="${escapeHtml(category.image)}" alt="" loading="lazy"/>`
+    ? `<img class="category-photo" src="${escapeHtml(category.image)}" alt="" data-fallback-icon="${escapeHtml(category?.icon || '🛍️')}" loading="lazy"/>`
     : escapeHtml(category?.icon || '🛍️');
 }
+
+document.addEventListener('error', event => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement)) return;
+  if (image.hasAttribute('data-fallback-emoji')) {
+    if (image.dataset.fallbackAttempted !== 'true') {
+      image.dataset.fallbackAttempted = 'true';
+      image.src = '/assets/customer/images/product-placeholder.png';
+      return;
+    }
+    const fallback = document.createElement('span');
+    fallback.className = `${image.className} product-emoji-fallback`;
+    fallback.textContent = image.dataset.fallbackEmoji || '🛍️';
+    image.replaceWith(fallback);
+  } else if (image.matches('.category-photo')) {
+    const fallback = document.createElement('span');
+    fallback.className = 'category-photo-fallback';
+    fallback.textContent = image.dataset.fallbackIcon || '🛍️';
+    image.replaceWith(fallback);
+  } else if (image.matches('.hero-fruit-image')) {
+    const fallback = document.createElement('span');
+    fallback.className = 'hero-fruit-fallback';
+    fallback.textContent = '🥑';
+    image.replaceWith(fallback);
+  } else if (image.closest('.homepage-banner-action') && image.dataset.fallbackAttempted !== 'true') {
+    image.dataset.fallbackAttempted = 'true';
+    image.src = '/assets/customer/images/offer-default.png';
+  } else if (image.closest('.homepage-banner-action')) {
+    image.hidden = true;
+  }
+}, true);
 function productForOrderItem(item) { return state.products.find(product => product.id === item.id) || item; }
 function orderItemTitle(item) { return item.variantLabel ? `${item.name} · ${item.variantLabel}` : item.name; }
 function setNav() {
@@ -739,9 +820,15 @@ document.addEventListener('submit', async event => {
     const values = Object.fromEntries(new FormData(event.target).entries());
     const isRegistration = event.target.id === 'auth-register-form';
     if (isRegistration && values.password !== values.confirmPassword) { $('#auth-error').textContent = 'Passwords do not match.'; return; }
+    const form = event.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalLabel = submitButton?.textContent || (isRegistration ? 'Create account' : 'Sign in');
+    if (submitButton) { submitButton.disabled = true; submitButton.textContent = isRegistration ? 'Creating account…' : 'Signing in…'; }
     const endpoint = isRegistration ? '/api/auth/register' : '/api/auth/password/login';
+    let authRequestSucceeded = false;
     try {
       const result = await post(endpoint, { ...values, phone: state.modal.phone, referralCode: pendingReferralCode || sessionStorage.getItem('zepto.pendingReferral') || '' });
+      authRequestSucceeded = true;
       state.user = result.user; state.modal = null;
       const referralStatus = result.referral?.status;
       if (pendingReferralCode) { try { sessionStorage.removeItem('zepto.pendingReferral'); } catch {} pendingReferralCode = ''; }
@@ -751,7 +838,14 @@ document.addEventListener('submit', async event => {
       if (state.view === 'notifications') { const n=await api('/api/notifications');state.notifications=n.notifications;state.notificationUnread=n.unread; }
       render(); toast(referralStatus === 'linked' ? 'Your friend’s referral was linked' : referralStatus === 'invalid_code' ? 'That referral link is invalid' : 'You’re signed in');
       if (state.view === 'checkout' && !state.addresses.length) openAddress('form');
-    } catch (error) { $('#auth-error').textContent = error.message; }
+    } catch (error) {
+      const authError = $('#auth-error');
+      if (authError) authError.textContent = error.message;
+      else if (authRequestSucceeded) showStoreLoadError(error);
+      else toast(error.message);
+    } finally {
+      if (submitButton?.isConnected) { submitButton.disabled = false; submitButton.textContent = originalLabel; }
+    }
   }
   if (event.target.id === 'address-form') {
     const body = Object.fromEntries(new FormData(event.target).entries());
@@ -782,7 +876,7 @@ $('#global-search').addEventListener('keydown', event => { if (event.key === 'Es
 window.addEventListener('hashchange',()=>{handleNotificationHash(false).catch(()=>{});});
 document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !state.modal) { event.preventDefault(); $('#global-search').focus(); } if (!state.modal) return; if (event.key === 'Escape') { event.preventDefault(); state.modal = null; renderModal(); return; } if (event.key === 'Tab') { const dialog = $('#overlay-root .dialog'); const focusable = [...(dialog?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]') || [])].filter(el => el.getClientRects().length); if (!focusable.length) { event.preventDefault(); dialog?.focus(); return; } const first = focusable[0], last = focusable[focusable.length - 1]; if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } });
 
-bootstrap().catch(error => { $('#main-content').innerHTML = `<div class="empty-state"><div class="empty-art">☁</div><h2>Could not load the store</h2><p>${escapeHtml(error.message)}. Start the project server and reload.</p></div>`; });
+bootstrap().catch(showStoreLoadError);
 window.setInterval(async () => {
   if (!state.user || !['orders', 'order-success'].includes(state.view)) return;
   try {
