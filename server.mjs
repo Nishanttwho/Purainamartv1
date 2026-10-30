@@ -134,14 +134,29 @@ let postgresStartupClient = null;
 let postgresNeedsInitialization = false;
 let store;
 if (usePostgres) {
-  await assertPostgresSchema(pool);
-  postgresStartupClient = await pool.connect();
+  let startupPhase = 'schema_check', phaseAt = Date.now();
   try {
+    await assertPostgresSchema(pool);
+    console.info(JSON.stringify({ event: 'postgres_startup_phase', phase: startupPhase, durationMs: Date.now() - phaseAt }));
+    startupPhase = 'pool_connect'; phaseAt = Date.now();
+    postgresStartupClient = await pool.connect();
+    console.info(JSON.stringify({ event: 'postgres_startup_phase', phase: startupPhase, durationMs: Date.now() - phaseAt }));
+    startupPhase = 'begin_transaction'; phaseAt = Date.now();
     await postgresStartupClient.query('BEGIN');
+    console.info(JSON.stringify({ event: 'postgres_startup_phase', phase: startupPhase, durationMs: Date.now() - phaseAt }));
+    startupPhase = 'advisory_lock'; phaseAt = Date.now();
     await postgresStartupClient.query('SELECT pg_advisory_xact_lock($1)', [1718343473]);
+    console.info(JSON.stringify({ event: 'postgres_startup_phase', phase: startupPhase, durationMs: Date.now() - phaseAt }));
+    startupPhase = 'read_store_snapshot'; phaseAt = Date.now();
     store = await readPostgresStore(postgresStartupClient);
+    console.info(JSON.stringify({ event: 'postgres_startup_phase', phase: startupPhase, durationMs: Date.now() - phaseAt }));
     if (!store) { store = freshStore(); postgresNeedsInitialization = true; }
-  } catch (error) { await postgresStartupClient.query('ROLLBACK'); postgresStartupClient.release(); postgresStartupClient = null; throw error; }
+  } catch (error) {
+    try { if (postgresStartupClient) await postgresStartupClient.query('ROLLBACK'); } catch {}
+    postgresStartupClient?.release(); postgresStartupClient = null;
+    console.error(JSON.stringify({ event: 'postgres_startup_failed', phase: startupPhase, durationMs: Date.now() - phaseAt, code: error?.code || 'UNKNOWN' }));
+    throw error;
+  }
 } else {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   store = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath, 'utf8')) : freshStore();
@@ -258,11 +273,12 @@ function persist() {
   fs.renameSync(temp, dbPath);
 }
 if (usePostgres) {
+  let startupWriteMs = 0, startupCommitMs = 0;
   try {
-    if (postgresNeedsInitialization || storeNeedsMigration) await writePostgresStore(postgresStartupClient, store, { replace: postgresNeedsInitialization });
-    await postgresStartupClient.query('COMMIT');
-  } catch (error) { await postgresStartupClient.query('ROLLBACK'); throw error; }
-  finally { postgresStartupClient.release(); postgresStartupClient = null; }
+    if (postgresNeedsInitialization || storeNeedsMigration) { const at=Date.now(); await writePostgresStore(postgresStartupClient, store, { replace: postgresNeedsInitialization }); startupWriteMs=Date.now()-at; }
+    const at=Date.now(); await postgresStartupClient.query('COMMIT'); startupCommitMs=Date.now()-at;
+  } catch (error) { try { await postgresStartupClient.query('ROLLBACK'); } catch {} console.error(JSON.stringify({ event: 'postgres_startup_failed', phase: 'initialize_or_commit', code: error?.code || 'UNKNOWN' })); throw error; }
+  finally { postgresStartupClient.release(); postgresStartupClient = null; console.info(JSON.stringify({ event:'postgres_startup_complete', startupWriteMs, startupCommitMs })); }
 } else if (!fs.existsSync(dbPath) || storeNeedsMigration) persist();
 
 function cookieMap(req, { hashSessions = usePostgres } = {}) {
@@ -1369,25 +1385,58 @@ async function handleAdminApi(req, res, url) {
 
 const databaseRequestQueue = createSerialRequestQueue();
 let notificationWorkerRunning = false;
-function enqueueDatabaseOperation(callback) {
-  return databaseRequestQueue.enqueue(callback);
+let activeDatabaseOperation = null;
+function diagnosticRoute(pathname) {
+  return String(pathname || '/').split('/').map(part => /^\d{5,}$/.test(part) || /^[a-f0-9-]{24,}$/i.test(part) ? ':id' : part).join('/');
 }
-async function withNotificationStateTransaction(callback) {
+async function runTrackedDatabaseOperation(metadata, callback, queueMetrics = {}) {
+  const startedAt = Date.now();
+  const operation = { type: metadata.type, route: metadata.route || null, startedAt: new Date(startedAt).toISOString(), queueDepthAtStart: Number(queueMetrics.queueDepthAtStart || 0), queueWaitMs: Number(queueMetrics.queueWaitMs || 0) };
+  activeDatabaseOperation = operation;
+  console.info(JSON.stringify({ event: 'database_queue_operation_started', ...operation }));
+  try { return await callback(queueMetrics); }
+  finally {
+    const finishedAt = Date.now();
+    console.info(JSON.stringify({ event: 'database_queue_operation_completed', type: operation.type, route: operation.route, startedAt: operation.startedAt, finishedAt: new Date(finishedAt).toISOString(), durationMs: finishedAt - startedAt, queueWaitMs: operation.queueWaitMs, queueDepthAtStart: operation.queueDepthAtStart, queueDepthAtCompletion: databaseRequestQueue.depth }));
+    if (activeDatabaseOperation === operation) activeDatabaseOperation = null;
+  }
+}
+function enqueueDatabaseOperation(callback, type = 'notification_worker') {
+  return databaseRequestQueue.enqueue(metrics => runTrackedDatabaseOperation({ type }, callback, metrics));
+}
+async function withNotificationStateTransaction(callback, jobType = 'notification_state_transaction') {
   if(!usePostgres){const changed=await callback(store);if(changed)persist();return changed;}
   return enqueueDatabaseOperation(async()=>{
-    const client=await pool.connect();
+    let client;
+    const timings = { poolConnectMs: null, beginTransactionMs: null, advisoryLockWaitMs: null, readStoreSnapshotMs: null, handlerMs: null, writeStoreMs: null, commitMs: null };
     try{
-      await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock($1)',[1718343473]);
-      store=await readPostgresStore(client);products=store.products;categories=store.categories;
+      let at=Date.now();client=await pool.connect();timings.poolConnectMs=Date.now()-at;
+      at=Date.now();await client.query('BEGIN');timings.beginTransactionMs=Date.now()-at;
+      at=Date.now();await client.query('SELECT pg_advisory_xact_lock($1)',[1718343473]);timings.advisoryLockWaitMs=Date.now()-at;
+      at=Date.now();store=await readPostgresStore(client);timings.readStoreSnapshotMs=Date.now()-at;products=store.products;categories=store.categories;
+      at=Date.now();
       const changed=await callback(store);
-      if(changed)await writePostgresStore(client,store,{replace:true});
-      await client.query('COMMIT');return changed;
-    }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}finally{client.release();}
-  });
+      timings.handlerMs=Date.now()-at;
+      if(changed){at=Date.now();await writePostgresStore(client,store,{replace:true});timings.writeStoreMs=Date.now()-at;}else timings.writeStoreMs=0;
+      at=Date.now();await client.query('COMMIT');timings.commitMs=Date.now()-at;return changed;
+    }catch(error){try{if(client)await client.query('ROLLBACK');}catch{}throw error;}finally{client?.release();console.info(JSON.stringify({event:'notification_worker_postgres_timings',jobType,poolConnectMs:timings.poolConnectMs,beginTransactionMs:timings.beginTransactionMs,advisoryLockWaitMs:timings.advisoryLockWaitMs,readStoreSnapshotMs:timings.readStoreSnapshotMs,handlerMs:timings.handlerMs,writeStoreMs:timings.writeStoreMs,commitMs:timings.commitMs}));}
+  }, `notification_worker:${jobType}`);
 }
 async function processDueCampaigns() {
-  try { return await withNotificationStateTransaction(()=>processDueNotificationCampaignsInStore()); }
+  try {
+    if (usePostgres) { const availability = await notificationWorkAvailability(); if (!availability?.campaignsDue) return false; }
+    return await withNotificationStateTransaction(()=>processDueNotificationCampaignsInStore(), 'process_due_campaigns');
+  }
   catch(error){console.error('Notification scheduler failed; queued campaigns remain stored.');return false;}
+}
+async function notificationWorkAvailability() {
+  try {
+    const result = await pool.query({ text: "SELECT EXISTS(SELECT 1 FROM notification_campaigns WHERE status IN ('queued','scheduled') AND (scheduled_at IS NULL OR scheduled_at <= now())) AS campaigns_due, EXISTS(SELECT 1 FROM notification_outbox WHERE status='queued' AND (next_attempt_at IS NULL OR next_attempt_at <= now())) AS outbox_due", query_timeout: 1000 });
+    return { campaignsDue: Boolean(result.rows[0]?.campaigns_due), outboxDue: Boolean(result.rows[0]?.outbox_due) };
+  } catch (error) {
+    console.warn(JSON.stringify({ event: 'notification_work_preflight_failed', code: error?.code || 'UNKNOWN' }));
+    return null;
+  }
 }
 function updateCampaignDeliveryStatus(campaignId) {
   if(!campaignId)return;
@@ -1399,6 +1448,7 @@ function updateCampaignDeliveryStatus(campaignId) {
   if(!['queued','processing','scheduled'].includes(campaign.status))campaign.deliveryFinishedAt=new Date().toISOString();
 }
 async function claimNotificationJob() {
+  if (usePostgres) { const availability = await notificationWorkAvailability(); if (!availability?.outboxDue) return false; }
   return withNotificationStateTransaction(()=>{
     const now=Date.now();
     for(const row of store.notificationOutbox)if(row.status==='processing'&&now-Date.parse(row.claimedAt||row.createdAt)>10*60*1000){row.status='queued';row.nextAttemptAt=new Date(now).toISOString();}
@@ -1409,7 +1459,7 @@ async function claimNotificationJob() {
     const accepted=new Set(store.notificationDeliveryLogs.filter(row=>row.eventId===job.eventId&&row.ownerType===job.ownerType&&row.ownerId===job.ownerId&&row.status==='accepted').map(row=>row.deviceId));
     const devices=store.notificationDevices.filter(row=>row.ownerType===job.ownerType&&row.ownerId===job.ownerId&&row.status==='active'&&!accepted.has(row.id)).slice(0,20);
     return {job:structuredClone(job),event:structuredClone(event||{}),devices:structuredClone(devices)};
-  });
+  }, 'claim_outbox_job');
 }
 async function finishNotificationJob(claim,outcomes,errorCode=null) {
   return withNotificationStateTransaction(()=>{
@@ -1428,7 +1478,7 @@ async function finishNotificationJob(claim,outcomes,errorCode=null) {
     else {job.status=remaining?'queued':outcomes.some(row=>row.ok)?'accepted':'failed';job.processedAt=job.status==='queued'?null:now;}
     updateCampaignDeliveryStatus(job.campaignId);
     return true;
-  });
+  }, 'finish_outbox_job');
 }
 async function drainNotificationOutbox() {
   if(notificationWorkerRunning)return;
@@ -1450,12 +1500,47 @@ async function drainNotificationOutbox() {
   finally{notificationWorkerRunning=false;}
 }
 let notificationWorkerTimer=null;
-function scheduleNotificationWorkers() {
+function scheduleNotificationWorkers(delay = 250) {
   if(notificationWorkerTimer)return;
-  notificationWorkerTimer=setTimeout(async()=>{notificationWorkerTimer=null;await processDueCampaigns();await drainNotificationOutbox();},250);
+  notificationWorkerTimer=setTimeout(async()=>{
+    notificationWorkerTimer=null;
+    if (usePostgres && (databaseRequestQueue.depth > 0 || activeDatabaseOperation)) { scheduleNotificationWorkers(1000); return; }
+    await processDueCampaigns();await drainNotificationOutbox();
+  },delay);
   notificationWorkerTimer.unref?.();
 }
 const notificationWorkerInterval=setInterval(scheduleNotificationWorkers,3000);notificationWorkerInterval.unref?.();
+async function readPostgresProducts(req, res) {
+  const startedAt = Date.now();
+  let client;
+  let poolConnectMs = null;
+  let queryMs = null;
+  try {
+    const phaseAt = Date.now();
+    client = await pool.connect();
+    poolConnectMs = Date.now() - phaseAt;
+    const queryAt = Date.now();
+    const result = await client.query({ text: 'SELECT data FROM products ORDER BY position', query_timeout: 5000 });
+    queryMs = Date.now() - queryAt;
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const q = (url.searchParams.get('q') || '').trim().toLowerCase();
+    const category = url.searchParams.get('category') || 'all';
+    const rows = result.rows.map(row => row.data).filter(product => productHasSellableStock(product) && (category === 'all' || product.category === category) && (!q || `${product.name} ${product.detail} ${product.category}`.toLowerCase().includes(q)));
+    send(res, 200, { products: rows, count: rows.length });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'targeted_postgres_read_failed', route: '/api/products', phase: client ? 'query' : 'pool_connect', code: error?.code || 'UNKNOWN' }));
+    directJson(res, 503, { error: 'The application data store is temporarily unavailable. Please retry.', code: 'DATABASE_OPERATION_FAILED' });
+  } finally {
+    client?.release();
+    console.info(JSON.stringify({ event: 'targeted_postgres_read_completed', route: '/api/products', startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt, poolConnectMs, queryMs }));
+  }
+}
+async function runIndependentApiRequest(req, res) {
+  const startedAt = Date.now(), route = `${req.method} ${diagnosticRoute(requestPath(req))}`;
+  console.info(JSON.stringify({ event: 'independent_api_request_started', route, startedAt: new Date(startedAt).toISOString() }));
+  try { await handleRequest(req, res); }
+  finally { console.info(JSON.stringify({ event: 'independent_api_request_completed', route, startedAt: new Date(startedAt).toISOString(), finishedAt: new Date().toISOString(), durationMs: Date.now() - startedAt, status: res.statusCode })); scheduleNotificationWorkers(); }
+}
 const server = http.createServer((req, res) => {
   req.res = res;
   const path = requestPath(req);
@@ -1464,13 +1549,25 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (usePostgres && req.url?.startsWith('/api/')) {
+    const pathname = requestPath(req);
+    const independentApi = req.method === 'GET' && ['/api/notifications/config', '/api/notifications/firebase-config.js'].includes(pathname)
+      || req.method === 'POST' && pathname === '/api/auth/google/start';
+    if (independentApi) {
+      void runIndependentApiRequest(req, res);
+      return;
+    }
+    if (req.method === 'GET' && pathname === '/api/products') {
+      void readPostgresProducts(req, res);
+      return;
+    }
     let expired = false;
     const timeoutMs = boundedTimeoutMs('API_QUEUE_WAIT_TIMEOUT_MS', 20000);
-    const operation = enqueueWithDeadline(databaseRequestQueue, metrics => runPostgresRequest(req, res, metrics), {
+    const operation = enqueueWithDeadline(databaseRequestQueue, metrics => runTrackedDatabaseOperation({ type: 'api_request', route: `${req.method} ${diagnosticRoute(path)}` }, () => runPostgresRequest(req, res, metrics), metrics), {
       timeoutMs,
       onTimeout: () => {
         expired = true;
-        console.warn(JSON.stringify({ event: 'api_queue_wait_timeout', method: req.method, path, waitMs: timeoutMs, queuedRequests: databaseRequestQueue.depth }));
+        const active = activeDatabaseOperation ? { type: activeDatabaseOperation.type, route: activeDatabaseOperation.route, startedAt: activeDatabaseOperation.startedAt, activeDurationMs: Date.now() - Date.parse(activeDatabaseOperation.startedAt) } : null;
+        console.warn(JSON.stringify({ event: 'api_queue_wait_timeout', method: req.method, path: diagnosticRoute(path), waitMs: timeoutMs, queuedRequests: databaseRequestQueue.depth, activeOperation: active }));
         directJson(res, 503, { error: 'The application is busy processing other requests. Please retry shortly.', code: 'DATABASE_QUEUE_TIMEOUT' });
       },
       shouldSkip: () => expired || res.destroyed || res.writableEnded
@@ -1588,7 +1685,7 @@ async function runPostgresRequest(req, res, queueMetrics = {}) {
     if (context.response && !res.writableEnded) { res.writeHead(context.response.status, context.response.headers); res.end(context.response.responseBody); }
     else if (!res.writableEnded) { res.writeHead(500, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify({ error: 'The request did not produce a response.' })); }
   } catch (error) {
-    console.error('PostgreSQL request failed:', JSON.stringify({ path: requestPath(req), method: req.method, phase, code: error?.code || 'UNKNOWN' }));
+    console.error('PostgreSQL request failed:', JSON.stringify({ path: diagnosticRoute(requestPath(req)), method: req.method, phase, code: error?.code || 'UNKNOWN' }));
     try { if (client) await client.query('ROLLBACK'); } catch {}
     if (!res.headersSent && !res.writableEnded) {
       const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -1598,7 +1695,7 @@ async function runPostgresRequest(req, res, queueMetrics = {}) {
     const totalMs = Date.now() - requestStartedAt;
     timings.totalMs = totalMs;
     if (totalMs >= 1500 || timings.queueWaitMs >= 500) {
-      console.warn(JSON.stringify({ event: 'slow_postgres_api_request', method: req.method, path: requestPath(req), status: context?.response?.status || res.statusCode, phase, ...timings }));
+      console.warn(JSON.stringify({ event: 'slow_postgres_api_request', method: req.method, path: diagnosticRoute(requestPath(req)), status: context?.response?.status || res.statusCode, phase, ...timings }));
     }
     activeDatabaseRequest = null;
     client?.release();
