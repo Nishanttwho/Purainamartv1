@@ -7,7 +7,7 @@
     "node": ">=24.7.0 <25"
   },
   "scripts": {
-    "start": "npm run db:migrate && node server.mjs",
+    "start": "node scripts/start.mjs",
     "test": "node --test \"test/*.test.mjs\"",
     "test:postgres": "node --test test/postgres.integration.test.mjs",
     "db:migrate": "node scripts/migrate-postgres.mjs",
