@@ -37,6 +37,10 @@ test('homepage first render does not wait on referral validation or protected de
   const end = source.indexOf('\nfunction showStoreLoadError', start);
   const bootstrap = source.slice(start, end);
   const renderAt = bootstrap.indexOf('  render();');
+  const bootstrapRequestAt = bootstrap.indexOf("await api('/api/bootstrap')");
+  assert.ok(renderAt >= 0 && bootstrapRequestAt > renderAt, 'the homepage shell renders before the main bootstrap request');
+  assert.match(bootstrap, /api\('\/api\/categories'\)\.then/);
+  assert.match(bootstrap, /api\('\/api\/products'\)\.then/);
   const referralAt = bootstrap.indexOf("api('/api/referrals/validate?");
   assert.ok(renderAt >= 0 && referralAt > renderAt, 'render runs before the optional referral request');
   assert.doesNotMatch(bootstrap, /await\s+api\('\/api\/referrals\/validate/);
@@ -45,6 +49,7 @@ test('homepage first render does not wait on referral validation or protected de
   const homeClick = source.slice(source.indexOf("if (button.dataset.view === 'home')"), source.indexOf("if (button.dataset.view === 'referrals')"));
   assert.match(homeClick, /setView\('home'\)/);
   assert.doesNotMatch(homeClick, /api\(/, 'logo navigation is rendering/navigation only, not a hidden data reload');
+  assert.match(source, /catalogueLoaded && !state\.products\.length/, 'an empty catalogue has a visible homepage state');
 });
 
 test('frontend GETs time out visibly while mutations are not client-aborted', async () => {

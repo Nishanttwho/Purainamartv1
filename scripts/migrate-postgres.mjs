@@ -2,11 +2,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
+import { configurePostgresPool, normalizePostgresConnectionString } from '../lib/postgres-config.mjs';
 
 if (!process.env.DATABASE_URL) throw new Error('Set DATABASE_URL to the intended development, test, or production database.');
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const migrationsDirectory = path.join(root, 'db', 'migrations');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000 });
+const pool = configurePostgresPool(new Pool({ connectionString: normalizePostgresConnectionString(process.env.DATABASE_URL), max: 1, ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000 }));
 try {
   const identity = await pool.query('SELECT current_database() AS database, current_user AS role');
   console.log(`Applying explicit schema migration to database "${identity.rows[0].database}" as role "${identity.rows[0].role}".`);

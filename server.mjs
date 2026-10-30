@@ -15,6 +15,7 @@ import { cloudinaryConfig, isCloudinaryImageUrl, signCloudinaryUpload } from './
 import { defaultHomepageBanners, validateHomepageBanners } from './lib/homepage-banners.mjs';
 import { isValidSummaryDate, isValidSummaryMonth, summarizeRiderDeliveries } from './lib/rider-delivery-summary.mjs';
 import { createSerialRequestQueue, enqueueWithDeadline } from './lib/serial-request-queue.mjs';
+import { configurePostgresPool, normalizePostgresConnectionString } from './lib/postgres-config.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
@@ -129,7 +130,7 @@ function notificationTemplateDefaults() {
   return Object.fromEntries(['order_received','order_status','rider_assigned','delivery_status','payment_update','referral_reward','promotional_campaign','announcement','rider_order','admin_operational'].map(eventType => [eventType,{ eventType,enabled:true,inAppEnabled:true,pushEnabled:true,updatedAt:null,updatedBy:null }]));
 }
 
-const pool = usePostgres ? new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.PG_POOL_MAX || 5), ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000, statement_timeout: boundedTimeoutMs('PG_STATEMENT_TIMEOUT_MS', 12000), lock_timeout: boundedTimeoutMs('PG_LOCK_TIMEOUT_MS', 4000), idle_in_transaction_session_timeout: boundedTimeoutMs('PG_IDLE_TX_TIMEOUT_MS', 40000), application_name: 'zepto-grocery-app' }) : null;
+const pool = usePostgres ? configurePostgresPool(new Pool({ connectionString: normalizePostgresConnectionString(process.env.DATABASE_URL), max: Number(process.env.PG_POOL_MAX || 5), ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000, statement_timeout: boundedTimeoutMs('PG_STATEMENT_TIMEOUT_MS', 12000), lock_timeout: boundedTimeoutMs('PG_LOCK_TIMEOUT_MS', 4000), idle_in_transaction_session_timeout: boundedTimeoutMs('PG_IDLE_TX_TIMEOUT_MS', 40000), application_name: 'zepto-grocery-app' })) : null;
 let postgresStartupClient = null;
 let postgresNeedsInitialization = false;
 let store;
@@ -179,7 +180,7 @@ for (const user of store.users) { if (!user.referralCode) { user.referralCode = 
 products = store.products;
 categories = store.categories;
 if (!isProduction) {
-  if (!categories.some(row => row.id === 'bakery')) { categories.push(structuredClone(categories.find(row => row.id === 'pantry') ? { id: 'bakery', name: 'Bakery', icon: '🍞', color: '#f8e8d8', image: '/assets/customer/zepto-home/products/p115-whole-wheat-bread.jpg', isActive: true } : {})); storeNeedsMigration = true; }
+  if (!categories.some(row => row.id === 'bakery') && categories.some(row => row.id === 'pantry')) { categories.push({ id: 'bakery', name: 'Bakery', icon: '🍞', color: '#f8e8d8', image: '/assets/customer/zepto-home/products/p115-whole-wheat-bread.jpg', isActive: true }); storeNeedsMigration = true; }
   const bread = products.find(row => row.id === 'p115');
   if (bread && bread.category === 'pantry') { bread.category = 'bakery'; storeNeedsMigration = true; }
   for (const [id, image] of [['home','/assets/customer/zepto-home/products/p119-dishwash-liquid.jpeg'],['baby','/assets/customer/zepto-home/products/p121-baby-wipes.jpeg']]) {
@@ -271,6 +272,13 @@ function persist() {
   const temp = `${dbPath}.tmp`;
   fs.writeFileSync(temp, JSON.stringify(store, null, 2));
   fs.renameSync(temp, dbPath);
+}
+function deletePersistedSession(kind, sid) {
+  if (!sid) return;
+  if (!usePostgres) { persist(); return; }
+  if (!activeDatabaseRequest) throw new Error('PostgreSQL session deletion must run inside a database transaction.');
+  const id = sid.startsWith('h:') ? sid.slice(2) : crypto.createHash('sha256').update(sid).digest('hex');
+  activeDatabaseRequest.targetedWrites.push({ sql: 'DELETE FROM app_sessions WHERE kind=$1 AND id=$2', params: [kind, id] });
 }
 if (usePostgres) {
   let startupWriteMs = 0, startupCommitMs = 0;
@@ -1535,6 +1543,17 @@ async function readPostgresProducts(req, res) {
     console.info(JSON.stringify({ event: 'targeted_postgres_read_completed', route: '/api/products', startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt, poolConnectMs, queryMs }));
   }
 }
+async function readPostgresCategories(req, res) {
+  let client;
+  try {
+    client = await pool.connect();
+    const result = await client.query({ text: "SELECT data FROM categories WHERE id='all' OR COALESCE(data->>'isActive','true') <> 'false' ORDER BY position", query_timeout: 5000 });
+    directJson(res, 200, { categories: result.rows.map(row => row.data) });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'targeted_postgres_read_failed', route: '/api/categories', phase: client ? 'query' : 'pool_connect', code: error?.code || 'UNKNOWN' }));
+    directJson(res, 503, { error: 'The application data store is temporarily unavailable. Please retry.', code: 'DATABASE_OPERATION_FAILED' });
+  } finally { client?.release(); }
+}
 async function runIndependentApiRequest(req, res) {
   const startedAt = Date.now(), route = `${req.method} ${diagnosticRoute(requestPath(req))}`;
   console.info(JSON.stringify({ event: 'independent_api_request_started', route, startedAt: new Date(startedAt).toISOString() }));
@@ -1558,6 +1577,10 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === 'GET' && pathname === '/api/products') {
       void readPostgresProducts(req, res);
+      return;
+    }
+    if (req.method === 'GET' && pathname === '/api/categories') {
+      void readPostgresCategories(req, res);
       return;
     }
     let expired = false;
@@ -1658,7 +1681,7 @@ async function runPostgresRequest(req, res, queueMetrics = {}) {
     store = latest;
     products = store.products;
     categories = store.categories;
-    activeDatabaseRequest = { res, dirty: false, response: null };
+    activeDatabaseRequest = { res, dirty: false, response: null, targetedWrites: [] };
     phase = 'request_handler';
     phaseStartedAt = Date.now();
     await handleRequest(req, res);
@@ -1675,6 +1698,11 @@ async function runPostgresRequest(req, res, queueMetrics = {}) {
         phase = 'write_store';
         phaseStartedAt = Date.now();
         await writePostgresStore(client, store, { replace: true });
+        timings.writeStoreMs = Date.now() - phaseStartedAt;
+      } else if (context.targetedWrites.length) {
+        phase = 'targeted_write';
+        phaseStartedAt = Date.now();
+        for (const write of context.targetedWrites) await client.query(write.sql, write.params);
         timings.writeStoreMs = Date.now() - phaseStartedAt;
       } else timings.writeStoreMs = 0;
       phase = 'commit';
@@ -1753,7 +1781,7 @@ async function handleRequest(req, res) {
       return send(res, 200, { admin: currentAdmin({ headers: { cookie: `asid=${encodeURIComponent(sid)}` } }) }, { 'set-cookie': sessionCookie('asid', sid, req, 8 * 3600) });
     }
     if (req.method === 'POST' && url.pathname === '/api/admin/auth/logout') {
-      const sid = cookieMap(req).asid; if (sid) delete store.adminSessions[sid]; persist();
+      const sid = cookieMap(req).asid; if (sid) { delete store.adminSessions[sid]; deletePersistedSession('admin', sid); }
       return send(res, 200, { ok: true }, { 'set-cookie': sessionCookie('asid', '', req, 0) });
     }
     if (url.pathname.startsWith('/api/admin/')) return await handleAdminApi(req, res, url);
@@ -1883,6 +1911,7 @@ async function handleRequest(req, res) {
       const rows = products.filter(p => productHasSellableStock(p) && (category === 'all' || p.category === category) && (!q || `${p.name} ${p.detail} ${p.category}`.toLowerCase().includes(q)));
       return send(res, 200, { products: rows, count: rows.length });
     }
+    if (req.method === 'GET' && url.pathname === '/api/categories') return send(res, 200, { categories: categories.filter(row => row.id === 'all' || row.isActive !== false) });
     if (req.method === 'GET' && url.pathname === '/api/cart') return send(res, 200, cartSummary(req));
     if (req.method === 'POST' && url.pathname === '/api/rider/auth/login') {
       const body = await readBody(req), phone = normalizePhone(body.phone), identity = phone || 'invalid';
@@ -1923,8 +1952,7 @@ async function handleRequest(req, res) {
     }
     if (req.method === 'POST' && url.pathname === '/api/rider/auth/logout') {
       const sid = cookieMap(req).rsid;
-      if (sid) delete store.riderSessions[sid];
-      persist();
+      if (sid) { delete store.riderSessions[sid]; deletePersistedSession('rider', sid); }
       return send(res, 200, { ok: true }, { 'set-cookie': sessionCookie('rsid', '', req, 0) });
     }
     if (url.pathname === '/api/rider/notifications/devices' && req.method === 'POST') {
@@ -2208,8 +2236,15 @@ async function handleRequest(req, res) {
     }
     if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
       const sid = cookieMap(req).sid;
-      if (sid) delete store.sessions[sid];
-      persist();
+      const session = sid && store.sessions[sid];
+      const body = await readBody(req);
+      const deviceKey = String(body.deviceKey || '').trim();
+      if (session?.userId && /^[A-Fa-f0-9-]{20,80}$/.test(deviceKey)) {
+        const deviceHash = crypto.createHash('sha256').update(deviceKey).digest('hex');
+        if (usePostgres) activeDatabaseRequest.targetedWrites.push({ sql: "UPDATE notification_devices SET status='inactive',updated_at=now() WHERE owner_type='customer' AND owner_id=$1 AND device_key=$2", params: [session.userId, deviceHash] });
+        else deactivatePushDevice('customer', session.userId, { deviceKey });
+      }
+      if (sid) { delete store.sessions[sid]; deletePersistedSession('customer', sid); }
       return send(res, 200, { ok: true }, { 'set-cookie': sessionCookie('sid', '', req, 0) });
     }
     if (req.method === 'POST' && url.pathname === '/api/cart/items') {

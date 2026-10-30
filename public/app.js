@@ -3,7 +3,7 @@ import { distinctProductImageSources } from './product-images.js';
 const state = {
   view: 'home', categories: [], products: [], cart: { items: [], count: 0, subtotal: 0, delivery: 0, platform: 0, discount: 0, total: 0 },
   user: null, addresses: [], activeAddress: null, deliveryAreas: [], selectedDeliveryAreaId: null, deliveryQuote: null, orders: [], coupons: [], wishlist: [], notifications: [], notificationUnread: 0, notificationConfig: null, notificationPushEnabled: false, selectedCategory: 'all', searchQuery: '', selectedProduct: null, selectedProductId: null, previousProductView: 'home', looseSelections: {}, productOrderCounts: {},
-  auth: null, modal: null, returnView: 'home', checkoutPayment: 'cod', checkoutAddressId: null, addressNotice: null, activeOrder: null, busy: false, googleBusy: false,
+  auth: null, modal: null, returnView: 'home', checkoutPayment: 'cod', checkoutAddressId: null, addressNotice: null, activeOrder: null, busy: false, googleBusy: false, loggingOut: false, catalogueLoaded: false, storeLoadError: null,
   referralData: null, referralLoading: false, referralError: null, offersFilter: 'all', offersTermsOpen: false, checkoutRequest: null, placingOrder: false, mode: 'development'
 };
 
@@ -67,8 +67,13 @@ async function handleNotificationHash(initial = false) {
 }
 
 async function bootstrap() {
+  render();
+  api('/api/categories').then(data => { state.categories = data.categories || []; render(); }).catch(() => {});
+  api('/api/products').then(data => { state.products = data.products || []; state.catalogueLoaded = true; render(); }).catch(() => {});
   const data = await api('/api/bootstrap');
   Object.assign(state, data);
+  state.loggingOut = false;
+  state.catalogueLoaded = true;
   const requestedProduct = new URLSearchParams(location.search).get('product');
   if (requestedProduct && state.products.some(row => row.id === requestedProduct)) { state.view = 'product'; state.selectedProductId = requestedProduct; }
   if (state.user) import('/push-client.js').then(push => push.syncGrantedWebPush('customer')).catch(() => {});
@@ -96,12 +101,16 @@ async function bootstrap() {
 }
 function showStoreLoadError(error) {
   console.error('[Puraina Mart] Store startup failed:', error);
-  const main = $('#main-content');
-  main.innerHTML = `<div class="empty-state"><div class="empty-art">☁</div><h2>Could not load the store</h2><p>${escapeHtml(error?.message || 'Check your connection and try again.')}</p><button id="retry-store-load" class="primary-button" type="button">Retry</button></div>`;
-  $('#retry-store-load').addEventListener('click', async event => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.textContent = 'Retrying…';
+  state.storeLoadError = error?.message || 'Check your connection and try again.';
+  state.view = 'home';
+  render();
+  const button = $('#retry-store-load');
+  button?.addEventListener('click', async event => {
+    const retryButton = event.currentTarget;
+    retryButton.disabled = true;
+    retryButton.textContent = 'Retrying…';
+    state.storeLoadError = null;
+    render();
     try { await bootstrap(); }
     catch (retryError) { showStoreLoadError(retryError); }
   });
@@ -261,7 +270,8 @@ function renderHome() {
     return `<button class="category-tile" data-action="category" data-id="${escapeHtml(id)}"><span class="category-emoji" style="background:${escapeHtml(category.color)}">${categoryImage(category)}</span><strong>${escapeHtml(label)}</strong></button>`;
   }).join('');
   const referralNote = pendingReferralCode ? `<section class="referral-invite-note ${state.referralInvite?.valid ? '' : 'invalid'}" role="status"><strong>${state.referralInvite?.valid ? 'A friend invited you to Zepto' : 'Referral link unavailable'}</strong><span>${state.referralInvite?.valid ? 'Browse first. Sign in when you’re ready to link this referral.' : 'You can continue shopping; this link can’t be applied.'}</span></section>` : '';
-  return referralNote + `<section class="hero">
+  const storeError = state.storeLoadError ? `<div class="empty-state" role="alert"><h2>Some store information could not load</h2><p>${escapeHtml(state.storeLoadError)}</p><button id="retry-store-load" class="secondary-button" type="button">Retry</button></div>` : '';
+  return referralNote + storeError + `<section class="hero">
       <div class="hero-copy"><span class="eyebrow">Fresh groceries</span><h1>Fresh picks,<br/><em>delivered fast</em></h1><p>Groceries, snacks, daily essentials at your doorstep</p>
         <button class="hero-cta" data-action="browse">Shop now&nbsp; →</button></div>
       <div class="hero-art" aria-label="Fresh groceries in a PurainaMart basket"><span class="delivery-pill">⚡ Delivery in 10–20 mins</span><div class="hero-basket"><div class="basket-groceries"><img src="/assets/customer/zepto-home/products/p104-spinach.jpeg" alt="" loading="eager" decoding="async" fetchpriority="low"/><img src="/assets/customer/zepto-home/products/p105-farm-fresh-milk.jpeg" alt="" loading="eager" decoding="async" fetchpriority="low"/><img src="/assets/customer/zepto-home/products/p102-banana-robusta.jpeg" alt="" loading="eager" decoding="async" fetchpriority="low"/></div><div class="basket-front">PurainaMart</div></div></div>
@@ -269,6 +279,7 @@ function renderHome() {
     <section class="section category-section"><div class="section-titleline"><div><small>BROWSE ESSENTIALS</small><h2>Shop by category</h2></div><button class="text-link" data-action="categories">See all&nbsp; →</button></div><div class="category-grid">${categoryTiles}</div></section>
     ${coupon ? `<section class="section"><article class="home-coupon welcome-coupon"><span class="coupon-percent">%</span><div><strong>Get ₹50 off on your first order</strong><span>Use code WELCOME50 | Min. order ₹${Number(coupon.minimum || 299)}</span></div><span class="coupon-gift" aria-hidden="true">🎁</span><button data-action="cart" aria-label="View offers">›</button></article></section>` : ''}
     ${renderHomepageBanners() ? `<section class="homepage-banners" aria-label="Homepage promotions">${renderHomepageBanners()}</section>` : ''}
+    ${state.catalogueLoaded && !state.products.length ? `<section class="section">${emptyState('Our catalogue is being prepared', 'There are no products available right now. Please check back soon.', '🛍️')}</section>` : ''}
     ${shelves.map(({ category, products }) => `<section class="section home-shelf"><div class="section-head"><div><h2>${category.id==='fruits'?'Fruits & Veg':escapeHtml(category.name)}</h2><p>${category.id==='fruits'?'Fresh fruits & vegetables, handpicked for you':'Daily essentials at your doorstep'}</p></div><button class="text-link" data-action="category" data-id="${escapeHtml(category.id)}">See all&nbsp; →</button></div><div class="home-product-row">${products.map(productCard).join('')}</div></section>`).join('')}
     <div class="benefit-strip"><div class="benefit"><i>✦</i><div><strong>Fresh, every day</strong><small>Picked for your basket</small></div></div><div class="benefit"><i>⌖</i><div><strong>Easy address book</strong><small>Save delivery locations</small></div></div><div class="benefit"><i>▤</i><div><strong>Track your order</strong><small>See each order update</small></div></div></div>`;
 }
@@ -944,7 +955,7 @@ document.addEventListener('click', async event => {
     return;
   }
   if (action === 'login') return openAuth();
-  if (action === 'logout') { try { await import('/push-client.js').then(push=>push.deactivateWebPush('customer')); } catch {} await post('/api/auth/logout', {}); state.user = null; state.addresses = []; state.activeAddress = null; state.orders = []; state.notifications = []; state.notificationUnread = 0; state.cart = null; state.wishlist = []; state.coupons = []; state.activeCoupon = null; state.referralData = null; state.activeOrder = null; state.checkoutAddressId = null; state.addressNotice = null; state.rewardCheckout = null; state.rewardQuote = null; state.selectedDeliveryAreaId = null; state.view = 'home'; await bootstrap(); toast('Signed out'); return; }
+  if (action === 'logout') { let deviceKey = '', pushWasEnabled = false; try { deviceKey = localStorage.getItem('zepto.push.device') || ''; pushWasEnabled = localStorage.getItem('zepto.push.enabled.customer') === '1'; localStorage.removeItem('zepto.push.enabled.customer'); } catch {} state.loggingOut = true; try { await post('/api/auth/logout', { deviceKey }); } catch (error) { state.loggingOut = false; if (pushWasEnabled) try { localStorage.setItem('zepto.push.enabled.customer', '1'); } catch {} toast(error.message); return; } state.user = null; state.auth = null; state.addresses = []; state.activeAddress = null; state.orders = []; state.notifications = []; state.notificationUnread = 0; state.cart = { items: [], count: 0, subtotal: 0, delivery: 0, platform: 0, discount: 0, total: 0 }; state.wishlist = []; state.coupons = []; state.activeCoupon = null; state.referralData = null; state.activeOrder = null; state.checkoutAddressId = null; state.addressNotice = null; state.rewardCheckout = null; state.rewardQuote = null; state.selectedDeliveryAreaId = null; state.view = 'home'; render(); toast('Signed out'); return; }
   if (action === 'open-order') return openOrderDetails(button.dataset.id);
   if (action === 'cancel-order') return cancelCustomerOrder(button.dataset.id);
   if (action === 'support') { state.modal = { type: 'info', title: 'Help & support', message: 'Support contact details have not been configured. Orders, addresses and cart updates are handled by this application.' }; return renderModal(); }
@@ -988,7 +999,7 @@ function updateNotificationPushStatus() {
 }
 window.addEventListener('zepto:push-registered',()=>{state.notificationPushEnabled=true;try{localStorage.setItem('zepto.push.enabled.customer','1');}catch{}updateNotificationPushStatus();});
 window.addEventListener('zepto:push-error',event=>toast(pushErrorMessage(new Error(event.detail||'Could not register this browser for notifications'))));
-window.addEventListener('zepto:push-message',async()=>{if(!state.user)return;try{const data=await api('/api/notifications');state.notifications=data.notifications;state.notificationUnread=data.unread;if(state.view==='notifications')updateNotificationHistory();else setNav();}catch{}});
+window.addEventListener('zepto:push-message',async()=>{if(!state.user||state.loggingOut)return;try{const data=await api('/api/notifications');state.notifications=data.notifications;state.notificationUnread=data.unread;if(state.view==='notifications')updateNotificationHistory();else setNav();}catch{}});
 
 document.addEventListener('submit', async event => {
   event.preventDefault();
@@ -1066,7 +1077,7 @@ document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrl
 
 bootstrap().catch(showStoreLoadError);
 window.setInterval(async () => {
-  if (!state.user || !['orders', 'order-success'].includes(state.view)) return;
+  if (!state.user || state.loggingOut || !['orders', 'order-success'].includes(state.view)) return;
   try {
     const nextOrders = (await api('/api/orders')).orders;
     const activeId = state.activeOrder?.id;
@@ -1079,7 +1090,7 @@ window.setInterval(async () => {
   } catch {}
 }, 5000);
 window.setInterval(async () => {
-  if (!state.user) return;
+  if (!state.user || state.loggingOut) return;
   try {
     const result = await api('/api/notifications');
     const previousUnread = state.notificationUnread;

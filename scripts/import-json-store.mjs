@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Pool } from 'pg';
 import { fileURLToPath } from 'node:url';
 import { assertPostgresSchema, writePostgresStore } from '../lib/postgres-store.mjs';
+import { configurePostgresPool, normalizePostgresConnectionString } from '../lib/postgres-config.mjs';
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
@@ -100,7 +101,7 @@ else {
   if (review.length && !args.includes('--include-suspected-demo-records')) throw new Error('Import stopped: inspect records requiring review; rerun with --include-suspected-demo-records only after review.');
   const confirmation = valueAfter('--confirm-target');
   if (!confirmation) throw new Error('Import stopped. Supply --confirm-target=<database-name> after confirming the target.');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000 });
+  const pool = configurePostgresPool(new Pool({ connectionString: normalizePostgresConnectionString(process.env.DATABASE_URL), max: 1, ssl: process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: true }, connectionTimeoutMillis: 10000 }));
   try {
     await assertPostgresSchema(pool);
     const client = await pool.connect();

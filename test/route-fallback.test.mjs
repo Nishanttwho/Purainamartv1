@@ -39,6 +39,12 @@ test('health, first-page bootstrap, and product search return promptly from an i
   assert.ok(bootstrap.categories.length > 0);
   assert.ok(bootstrap.products.length > 0);
   assert.ok(Array.isArray(bootstrap.homepageBanners));
+  const catalogueResponse = await fetch(base() + '/api/products');
+  assert.equal(catalogueResponse.status, 200);
+  assert.ok((await catalogueResponse.json()).products.length > 0);
+  const categoriesResponse = await fetch(base() + '/api/categories');
+  assert.equal(categoriesResponse.status, 200);
+  assert.ok((await categoriesResponse.json()).categories.length > 0);
 
   const productsResponse = await fetch(base() + '/api/products?q=avocado', { signal: AbortSignal.timeout(5000) });
   assert.equal(productsResponse.status, 200);
