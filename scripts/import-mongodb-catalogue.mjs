@@ -17,6 +17,7 @@ let client;
 async function main() {
   if (!output.startsWith(root + path.sep)) throw new Error('Report output must be inside this workspace');
   if (!verifiedProductIds.length) throw new Error('Explicit verified product IDs are required');
+  if ([...new Set(verifiedProductIds)].sort().join(',') !== 'p123,p125') throw new Error('This reviewed import is restricted to the two human-confirmed products p123 and p125');
   const input = await fs.readFile(source), sourceHash = catalogueHash(input);
   const plan = await planCatalogueImport(JSON.parse(input), { verifiedProductIds, publicDir: path.join(root, 'public') });
   const selectionHash = catalogueHash(JSON.stringify({ verifiedProductIds, products: plan.selectedProducts, categories: plan.selectedCategories }));
