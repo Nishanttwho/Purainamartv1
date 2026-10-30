@@ -2,9 +2,9 @@ import { distinctProductImageSources } from './product-images.js';
 
 const state = {
   view: 'home', categories: [], products: [], cart: { items: [], count: 0, subtotal: 0, delivery: 0, platform: 0, discount: 0, total: 0 },
-  user: null, addresses: [], activeAddress: null, deliveryAreas: [], selectedDeliveryAreaId: null, deliveryQuote: null, orders: [], coupons: [], wishlist: [], notifications: [], notificationUnread: 0, notificationConfig: null, notificationPushEnabled: false, selectedCategory: 'all', searchQuery: '', selectedProduct: null,
+  user: null, addresses: [], activeAddress: null, deliveryAreas: [], selectedDeliveryAreaId: null, deliveryQuote: null, orders: [], coupons: [], wishlist: [], notifications: [], notificationUnread: 0, notificationConfig: null, notificationPushEnabled: false, selectedCategory: 'all', searchQuery: '', selectedProduct: null, selectedProductId: null, previousProductView: 'home', looseSelections: {}, productOrderCounts: {},
   auth: null, modal: null, returnView: 'home', checkoutPayment: 'cod', checkoutAddressId: null, addressNotice: null, activeOrder: null, busy: false, googleBusy: false,
-  referralData: null, referralLoading: false, referralError: null, checkoutRequest: null, placingOrder: false, mode: 'development'
+  referralData: null, referralLoading: false, referralError: null, offersFilter: 'all', offersTermsOpen: false, checkoutRequest: null, placingOrder: false, mode: 'development'
 };
 
 let pendingReferralCode = '';
@@ -17,6 +17,11 @@ try {
 } catch { pendingReferralCode = ''; }
 const $ = (selector, root = document) => root.querySelector(selector);
 const money = value => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+const money2 = value => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function formatWeightGrams(value) { const grams = Math.max(0, Number(value) || 0); return grams >= 1000 ? `${Number((grams / 1000).toFixed(3)).toString()} kg` : `${Math.round(grams)} g`; }
+function cartCountCopy(cart = state.cart) { const products = new Set((cart.items || []).map(item => item.id)).size, units = Number(cart.count || 0); return `${products} product${products === 1 ? '' : 's'} · ${units} unit${units === 1 ? '' : 's'}`; }
+function cartItemQuantityCopy(item) { if (item.saleType === 'loose' && Number(item.quantityPerUnit) > 0) return formatWeightGrams(Number(item.totalBaseQuantity || item.quantityPerUnit * item.quantity)); const pack = String(item.variantLabel || item.detail?.match(/\b\d+(?:\.\d+)?\s?(?:g|kg|ml|l|piece|pieces|pack|packs)\b/i)?.[0] || '1 pack'); return /\bpack(?:s)?$/i.test(pack) ? escapeHtml(pack) : `${escapeHtml(pack)} pack`; }
+function cartUnitPriceCopy(item) { if (item.saleType === 'loose' && Number(item.quantityPerUnit) > 0) return `${money2(Number(item.price) * 1000 / Number(item.quantityPerUnit))}/kg`; return `${money(item.price)} each`; }
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
 async function api(url, options = {}) {
@@ -50,7 +55,7 @@ let initialHashHandled = false;
 async function handleNotificationHash(initial = false) {
   const requested = location.hash.slice(1);
   if (!['home','orders','notifications','referrals','offers'].includes(requested)) return;
-  if (requested === 'offers') { state.view = 'cart'; render(); return; }
+  if (requested === 'offers') { state.view = 'offers'; if (state.user) await loadReferralData(); render(); return; }
   if (requested !== 'home' && !state.user) { state.view=requested; openAuth(); return; }
   state.view=requested;
   try {
@@ -64,6 +69,8 @@ async function handleNotificationHash(initial = false) {
 async function bootstrap() {
   const data = await api('/api/bootstrap');
   Object.assign(state, data);
+  const requestedProduct = new URLSearchParams(location.search).get('product');
+  if (requestedProduct && state.products.some(row => row.id === requestedProduct)) { state.view = 'product'; state.selectedProductId = requestedProduct; }
   if (state.user) import('/push-client.js').then(push => push.syncGrantedWebPush('customer')).catch(() => {});
   // Render the catalog as soon as bootstrap data arrives. Referral validation
   // and deep-link data are secondary requests and must not keep the home blank.
@@ -114,16 +121,21 @@ function usableVariants(product) { return (product?.variants || []).filter(row =
 function defaultVariant(product) { return usableVariants(product).find(row => Number(row.stock) > 0) || usableVariants(product)[0] || null; }
 function quantityRequestKey(id, variantId) { return `${id}\u0000${variantId || ''}`; }
 function quantityRequestPending(id, variantId) { return pendingQuantityRequests.has(quantityRequestKey(id, variantId)); }
-function priceMarkup(price, mrp, large = false) { const hasReference = mrp != null && Number(mrp) > Number(price); return `<span class="${large?'quantity-price-large':'product-price'}">${money(price)}</span>${hasReference?` <s class="product-mrp">${money(mrp)}</s> <span class="discount-label">${Math.round((1-Number(price)/Number(mrp))*100)}% off</span>`:''}`; }
+function priceMarkup(price, mrp, large = false, exact = false) { const hasReference = mrp != null && Number(mrp) > Number(price); return `<span class="${large?'quantity-price-large':'product-price'}">${exact ? money2(price) : money(price)}</span>${hasReference?` <s class="product-mrp">${money(mrp)}</s> <span class="discount-label">${Math.round((1-Number(price)/Number(mrp))*100)}% off</span>`:''}`; }
 function productImage(product, className = 'product-photo', source = null) {
   const imageSource = source || distinctProductImageSources(product)[0];
+  const primaryImage = Array.isArray(product?.image) ? product.image[0] : product?.image;
+  const responsive = product?.thumbnail && product?.thumbnailSource === primaryImage && imageSource === primaryImage;
+  const loading = ['detail-product-photo', 'product-page-photo', 'cart-product-photo'].includes(className) ? 'eager' : 'lazy';
+  const priority = className === 'detail-product-photo' ? 'high' : 'auto';
+  const sizes = className === 'detail-product-photo' || className === 'product-page-photo' ? '(max-width: 760px) 100vw, 560px' : className === 'cart-product-photo' ? '64px' : '(max-width: 760px) 43vw, 220px';
   return imageSource
-    ? `<img class="${className}" src="${escapeHtml(imageSource)}" alt="${escapeHtml(product.name)}" data-fallback-emoji="${escapeHtml(product?.emoji || '🛍️')}" loading="lazy"/>`
+    ? `<img class="${className}" src="${escapeHtml(responsive ? product.thumbnail : imageSource)}"${responsive ? ` srcset="${escapeHtml(product.thumbnail)} 640w, ${escapeHtml(imageSource)} 1200w" sizes="${sizes}"` : ''} alt="${escapeHtml(product.name)}" data-fallback-emoji="${escapeHtml(product?.emoji || '🛍️')}" loading="${loading}" decoding="async" fetchpriority="${priority}"/>`
     : `<span class="${className === 'product-photo' ? 'product-emoji' : 'product-emoji-fallback'}">${escapeHtml(product?.emoji || '🛍️')}</span>`;
 }
 function categoryImage(category) {
   return category?.image
-    ? `<img class="category-photo" src="${escapeHtml(category.image)}" alt="" data-fallback-icon="${escapeHtml(category?.icon || '🛍️')}" loading="lazy"/>`
+    ? `<img class="category-photo" src="${escapeHtml(category.image)}" alt="" data-fallback-icon="${escapeHtml(category?.icon || '🛍️')}" loading="eager" decoding="async" fetchpriority="low"/>`
     : escapeHtml(category?.icon || '🛍️');
 }
 
@@ -133,6 +145,7 @@ document.addEventListener('error', event => {
   if (image.hasAttribute('data-fallback-emoji')) {
     if (image.dataset.fallbackAttempted !== 'true') {
       image.dataset.fallbackAttempted = 'true';
+      image.removeAttribute('srcset');
       image.src = '/assets/customer/images/product-placeholder.png';
       return;
     }
@@ -159,6 +172,8 @@ document.addEventListener('error', event => {
 }, true);
 function productForOrderItem(item) { return state.products.find(product => product.id === item.id) || item; }
 function orderItemTitle(item) { return item.variantLabel ? `${item.name} · ${item.variantLabel}` : item.name; }
+function truckIcon() { return '<svg viewBox="0 0 32 24" aria-hidden="true"><path d="M2 4h17v13H2zM19 9h6l5 5v3H19z"/><circle cx="8" cy="19" r="3"/><circle cx="25" cy="19" r="3"/><path d="M22 10v5h7"/></svg>'; }
+function giftIcon() { return '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 13h22v16H5zM3 9h26v6H3zM16 9v20M16 9c-7 0-9-6-5-7 4-1 5 7 5 7Zm0 0c7 0 9-6 5-7-4-1-5 7-5 7Z"/></svg>'; }
 function setNav() {
   document.querySelectorAll('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.view === (state.view === 'order-success' || state.view === 'checkout' ? 'cart' : state.view)));
   $('#account-label').textContent = state.user ? (state.user.name.split(' ')[0] || 'Account') : 'Sign in';
@@ -169,18 +184,25 @@ function setNav() {
   const notificationBadge = $('#notification-badge');
   if (notificationBadge) { notificationBadge.textContent = state.notificationUnread || ''; notificationBadge.classList.toggle('hidden', !state.notificationUnread); }
   const quick = $('#quick-cart');
-  const visible = state.cart.count > 0 && ['home', 'categories', 'search'].includes(state.view);
+  const visible = state.cart.count > 0 && state.view === 'home' && state.cart.deliveryAvailable !== false && (state.cart.freeDeliveryRemaining != null || state.cart.freeDeliveryUnlocked);
   quick.classList.toggle('visible', visible);
-  quick.innerHTML = visible ? `<div><strong>${state.cart.count} item${state.cart.count === 1 ? '' : 's'} · ${money(state.cart.total)}</strong><small>Added to your cart</small></div><button data-action="cart">View cart&nbsp; →</button>` : '';
+  const remaining = Number(state.cart.freeDeliveryRemaining || 0), progress = Math.min(100, Math.max(0, Number(state.cart.freeDeliveryProgressPercent || 0)));
+  quick.innerHTML = visible ? `<button class="home-delivery-progress" data-action="cart" aria-label="${state.cart.freeDeliveryUnlocked ? 'Free delivery unlocked. Open your cart' : `${money(remaining)} to free delivery. Open your cart`}"><span class="home-truck-icon" aria-hidden="true">${truckIcon()}</span><span class="home-delivery-copy"><strong>${state.cart.freeDeliveryUnlocked ? 'Free delivery unlocked!' : `${money(remaining)} to free delivery`}</strong><i><b style="width:${state.cart.freeDeliveryUnlocked ? 100 : progress}%"></b></i></span><span class="home-delivery-arrow" aria-hidden="true">›</span></button>` : '';
 }
 function render() {
   setNav();
+  document.querySelector('.app-shell')?.classList.toggle('product-open', state.view === 'product');
+  document.querySelector('.app-shell')?.classList.toggle('commerce-page', ['cart','offers','checkout','reward-checkout'].includes(state.view));
+  document.querySelector('.mobile-nav')?.classList.toggle('hidden', ['product','cart','offers','checkout','reward-checkout'].includes(state.view));
   const main = $('#main-content');
   main.classList.toggle('is-cart', state.view === 'cart');
   if (state.view === 'home') main.innerHTML = renderHome();
+  else if (state.view === 'product') main.innerHTML = renderProductPage();
   else if (state.view === 'categories') main.innerHTML = renderCategories();
   else if (state.view === 'search') main.innerHTML = renderSearch();
   else if (state.view === 'cart') main.innerHTML = renderCart();
+  else if (state.view === 'offers') main.innerHTML = renderOffers();
+  else if (state.view === 'offers') main.innerHTML = renderOffers();
   else if (state.view === 'wishlist') main.innerHTML = renderWishlist();
   else if (state.view === 'checkout') main.innerHTML = renderCheckout();
   else if (state.view === 'account') main.innerHTML = renderAccount();
@@ -200,15 +222,17 @@ function productCard(product) {
   const category = categoryById(product.category);
   const unavailable = product.variants?.length ? !variant || productQuantityLimit(product, variant) <= 0 : Number(product.stock) <= 0;
   const pending = quantityRequestPending(product.id, variantId);
-  const addControl = unavailable && !quantity ? '' : quantity
+  const addControl = product.saleType === 'loose'
+    ? `<button class="quick-add loose-open" data-action="product" data-id="${escapeHtml(product.id)}" aria-label="Choose weight for ${escapeHtml(product.name)}">ADD</button>`
+    : unavailable && !quantity ? '' : quantity
     ? `<span class="stepper"><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variantId||'')}" data-delta="-1" aria-label="Remove one" ${pending?'disabled':''}>−</button><strong>${quantity}</strong><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variantId||'')}" data-delta="1" aria-label="Add one" ${pending||quantity >= productQuantityLimit(product,variant) ? 'disabled' : ''}>+</button></span>`
     : `<button class="quick-add" data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variantId||'')}" data-delta="1" aria-label="Add ${escapeHtml(product.name)}" ${pending?'disabled':''}>ADD</button>`;
   return `<article class="product-card">
     <div class="product-visual" style="background:${escapeHtml(product.color)}" data-action="product" data-id="${escapeHtml(product.id)}">
     ${product.badge ? `<span class="product-badge">${escapeHtml(product.badge)}</span>` : ''}${distinctProductImageSources(product).length ? productImage(product) : product.emoji ? `<span class="product-emoji">${escapeHtml(product.emoji)}</span>` : `<img class="product-fallback" src="/assets/customer/images/product-placeholder.png" alt=""/>`}${unavailable ? '<img class="sold-out-image" src="/assets/customer/images/sold-out.png" alt="Sold out"/>' : ''}<button class="favorite-button ${saved ? 'saved' : ''}" data-action="favorite" data-id="${escapeHtml(product.id)}" aria-label="${saved ? 'Remove' : 'Add'} ${escapeHtml(product.name)} ${saved ? 'from' : 'to'} wishlist" aria-pressed="${saved}">♥</button><div class="product-cart-control">${addControl}</div>
     </div>
-    <div class="product-info"><small>${escapeHtml(category?.name || 'Grocery')}</small><h3>${escapeHtml(product.name)}</h3><div class="detail">${escapeHtml(variant?.label || product.detail)}</div>
-      <div class="product-price-row">${priceMarkup(variant?.price ?? product.price, variant?.mrp ?? (variant ? null : product.mrp))}</div>
+    <div class="product-info" data-action="product" data-id="${escapeHtml(product.id)}"><small>${escapeHtml(category?.name || 'Grocery')}</small><h3>${escapeHtml(product.name)}</h3><div class="detail">${product.saleType === 'loose' ? 'Loose product' : escapeHtml(variant?.label || product.detail)}</div>
+      <div class="product-price-row">${product.saleType === 'loose' ? `<strong class="product-price">${money(product.price)}/kg</strong>` : priceMarkup(variant?.price ?? product.price, variant?.mrp ?? (variant ? null : product.mrp))}</div>
     </div>
   </article>`;
 }
@@ -226,21 +250,65 @@ function renderHomepageBanners() {
   }).join('');
 }
 function renderHome() {
-  const shelves = state.categories.filter(category => category.id !== 'all')
-    .map(category => ({ category, products: state.products.filter(product => product.category === category.id).slice(0, 5) }))
-    .filter(shelf => shelf.products.length);
-  const coupon = state.coupons.find(item => item.code === 'DEMO50');
+  const shelves = ['fruits', 'pantry', 'dairy', 'snacks'].map(id => ({ category: categoryById(id), products: state.products.filter(product => product.category === id).slice(0, 6) })).filter(shelf => shelf.category && shelf.products.length);
+  const coupon = state.coupons.find(item => item.code === 'WELCOME50' && item.isActive !== false);
+  const categoryTiles = [
+    ['fruits','Fruits & Veg'], ['dairy','Dairy & Eggs'], ['snacks','Snacks'], ['beverages','Drinks'],
+    ['pantry','Staples'], ['bakery','Bakery'], ['home','Home Care'], ['baby','Baby Care']
+  ].map(([id,label]) => {
+    const category = state.categories.find(row => row.id === id);
+    if (!category) return '';
+    return `<button class="category-tile" data-action="category" data-id="${escapeHtml(id)}"><span class="category-emoji" style="background:${escapeHtml(category.color)}">${categoryImage(category)}</span><strong>${escapeHtml(label)}</strong></button>`;
+  }).join('');
   const referralNote = pendingReferralCode ? `<section class="referral-invite-note ${state.referralInvite?.valid ? '' : 'invalid'}" role="status"><strong>${state.referralInvite?.valid ? 'A friend invited you to Zepto' : 'Referral link unavailable'}</strong><span>${state.referralInvite?.valid ? 'Browse first. Sign in when you’re ready to link this referral.' : 'You can continue shopping; this link can’t be applied.'}</span></section>` : '';
   return referralNote + `<section class="hero">
-      <div class="hero-copy"><span class="eyebrow">Your neighbourhood, delivered</span><h1>Good things.<br/><em>Right on time.</em></h1><p>Everyday essentials, picked fresh and brought to your door.</p>
-        <button class="hero-cta" data-action="browse">Start shopping&nbsp; →</button><div class="trust-row"><span><i>✓</i> Fresh picks</span><span><i>✓</i> Quick delivery</span><span><i>✓</i> Easy checkout</span></div></div>
-      <div class="hero-art" aria-hidden="true"><div class="hero-orbit"></div><div class="hero-bag">${state.homepageHeroFruitImage ? `<img class="hero-fruit-image" src="${escapeHtml(state.homepageHeroFruitImage)}" alt=""/>` : '<span>🥑</span>'}<img class="hero-offer-mark" src="/assets/customer/images/offer-default.png" alt=""/></div><div class="hero-float one">Fresh picks <b>✦</b></div><div class="hero-float two">At your door&nbsp; 🚲</div></div>
+      <div class="hero-copy"><span class="eyebrow">Fresh groceries</span><h1>Fresh picks,<br/><em>delivered fast</em></h1><p>Groceries, snacks, daily essentials at your doorstep</p>
+        <button class="hero-cta" data-action="browse">Shop now&nbsp; →</button></div>
+      <div class="hero-art" aria-label="Fresh groceries in a PurainaMart basket"><span class="delivery-pill">⚡ Delivery in 10–20 mins</span><div class="hero-basket"><div class="basket-groceries"><img src="/assets/customer/zepto-home/products/p104-spinach.jpeg" alt="" loading="eager" decoding="async" fetchpriority="low"/><img src="/assets/customer/zepto-home/products/p105-farm-fresh-milk.jpeg" alt="" loading="eager" decoding="async" fetchpriority="low"/><img src="/assets/customer/zepto-home/products/p102-banana-robusta.jpeg" alt="" loading="eager" decoding="async" fetchpriority="low"/></div><div class="basket-front">PurainaMart</div></div></div>
     </section>
-    <section class="homepage-banners" aria-label="Homepage promotions">${renderHomepageBanners()}</section>
-    <section class="section">${sectionHead('Shop by category', 'Everything you need, all in one place', 'categories')}<div class="category-grid">${state.categories.filter(c => c.id !== 'all').map(c => `<button class="category-tile" data-action="category" data-id="${escapeHtml(c.id)}"><span class="category-emoji" style="background:${escapeHtml(c.color)}">${categoryImage(c)}</span><strong>${escapeHtml(c.name)}</strong></button>`).join('')}</div></section>
-    ${coupon ? `<section class="section"><article class="home-coupon"><img src="/assets/customer/images/offer-default.png" alt=""/><div><small>TODAY’S OFFER</small><strong>${escapeHtml(coupon.label || 'Save on your order')}</strong><span>Use ${escapeHtml(coupon.code)} on orders over ${money(coupon.minimum)} in your cart.</span></div><button data-action="cart">View cart&nbsp; →</button></article></section>` : ''}
-    ${shelves.map(({ category, products }) => `<section class="section home-shelf"><div class="section-head"><div><h2>${escapeHtml(category.name)}</h2><p>Available in your area</p></div><button class="text-link" data-action="category" data-id="${escapeHtml(category.id)}">Shop all&nbsp; →</button></div><div class="home-product-row">${products.map(productCard).join('')}</div></section>`).join('')}
+    <section class="section category-section"><div class="section-titleline"><div><small>BROWSE ESSENTIALS</small><h2>Shop by category</h2></div><button class="text-link" data-action="categories">See all&nbsp; →</button></div><div class="category-grid">${categoryTiles}</div></section>
+    ${coupon ? `<section class="section"><article class="home-coupon welcome-coupon"><span class="coupon-percent">%</span><div><strong>Get ₹50 off on your first order</strong><span>Use code WELCOME50 | Min. order ₹${Number(coupon.minimum || 299)}</span></div><span class="coupon-gift" aria-hidden="true">🎁</span><button data-action="cart" aria-label="View offers">›</button></article></section>` : ''}
+    ${renderHomepageBanners() ? `<section class="homepage-banners" aria-label="Homepage promotions">${renderHomepageBanners()}</section>` : ''}
+    ${shelves.map(({ category, products }) => `<section class="section home-shelf"><div class="section-head"><div><h2>${category.id==='fruits'?'Fruits & Veg':escapeHtml(category.name)}</h2><p>${category.id==='fruits'?'Fresh fruits & vegetables, handpicked for you':'Daily essentials at your doorstep'}</p></div><button class="text-link" data-action="category" data-id="${escapeHtml(category.id)}">See all&nbsp; →</button></div><div class="home-product-row">${products.map(productCard).join('')}</div></section>`).join('')}
     <div class="benefit-strip"><div class="benefit"><i>✦</i><div><strong>Fresh, every day</strong><small>Picked for your basket</small></div></div><div class="benefit"><i>⌖</i><div><strong>Easy address book</strong><small>Save delivery locations</small></div></div><div class="benefit"><i>▤</i><div><strong>Track your order</strong><small>See each order update</small></div></div></div>`;
+}
+function renderProductPage() {
+  const product = state.products.find(row => row.id === state.selectedProductId);
+  if (!product) return `<div class="empty-state"><h2>Product unavailable</h2><button class="primary-button" data-action="product-back">Back to shopping</button></div>`;
+  const loose = product.saleType === 'loose';
+  const saved = state.wishlist.some(row => row.id === product.id);
+  const choices = usableVariants(product);
+  let selection = state.looseSelections[product.id];
+  if (!selection) {
+    const preferred = choices.find(row => Number(row.quantityBase) === 500) || defaultVariant(product);
+    selection = { mode: 'preset', variantId: preferred?.id || '', grams: 500 };
+    state.looseSelections[product.id] = selection;
+  }
+  const selectedVariant = choices.find(row => row.id === selection.variantId) || defaultVariant(product);
+  const grams = selection.mode === 'custom' ? Number(selection.grams || 0) : Number(selectedVariant?.quantityBase || 0);
+  const selectedId = selection.mode === 'custom' ? `custom-${grams}` : selectedVariant?.id || null;
+  const selectedQty = productQuantity(product.id, selectedId);
+  const orderCount = Math.max(1, Math.min(10, Number(state.productOrderCounts[product.id] || 1)));
+  const unitPrice = loose ? Number(product.price || 0) : Number(selectedVariant?.price ?? product.price);
+  const chosenPrice = loose ? Math.round(unitPrice * grams) / 1000 : unitPrice;
+  const rating = Number(product.rating || (product.id === 'p103' ? 4.6 : loose ? 4.5 : 0));
+  const reviews = Number(product.reviewCount || (product.id === 'p103' ? 1200 : loose ? 2100 : 0));
+  const photo = distinctProductImageSources(product)[0];
+  const visual = photo ? productImage(product, 'product-page-photo', photo) : `<span class="product-page-emoji">${escapeHtml(product.emoji || '🛍️')}</span>`;
+  const deliveryEstimate = state.cart.deliveryEstimate || '10–20 mins';
+  const purchaseRow = loose
+    ? `<div class="purchase-controls">${selectedQty ? `<div class="stepper product-page-stepper"><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(selectedId || '')}" data-delta="-1" aria-label="Remove one">−</button><strong>${selectedQty}</strong><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(selectedId || '')}" data-delta="1" aria-label="Add one">+</button></div><span class="added-confirmation">✓ Added to cart</span>` : `<div class="stepper product-page-stepper"><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="-1" aria-label="Reduce selected quantity">−</button><strong>${orderCount}</strong><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="1" aria-label="Increase selected quantity">+</button></div><button class="primary-button product-page-add" data-action="add-loose" data-id="${escapeHtml(product.id)}" ${grams > 0 ? '' : 'disabled'}>🛒&nbsp; Add to cart · <span data-role="loose-total">${money2(chosenPrice * orderCount)}</span></button>`}</div>`
+    : `<div class="purchase-controls">${selectedQty ? `<div class="stepper product-page-stepper"><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-delta="-1" aria-label="Remove one">−</button><strong>${selectedQty}</strong><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-delta="1" aria-label="Add one">+</button></div><span class="added-confirmation">✓ Added to cart</span>` : `<div class="stepper product-page-stepper"><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="-1" aria-label="Reduce quantity">−</button><strong>${orderCount}</strong><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="1" aria-label="Increase quantity">+</button></div><button class="primary-button product-page-add" data-action="add-packaged" data-id="${escapeHtml(product.id)}">🛒&nbsp; Add to cart · ${money(unitPrice * orderCount)}</button>`}</div>`;
+  const quantityOptions = loose ? `<section class="loose-quantity"><h3>Select quantity</h3><div class="weight-options">${choices.map(row => `<button class="weight-option ${selection.mode === 'preset' && selection.variantId === row.id ? 'selected' : ''}" data-action="loose-preset" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(row.id)}" aria-pressed="${selection.mode === 'preset' && selection.variantId === row.id}"><strong>${escapeHtml(row.label)}</strong><small>${money2(row.price)}</small></button>`).join('')}<button class="weight-option ${selection.mode === 'custom' ? 'selected' : ''}" data-action="loose-custom" data-id="${escapeHtml(product.id)}" aria-pressed="${selection.mode === 'custom'}"><strong>Custom</strong><small>Any Qty</small></button></div>${selection.mode === 'custom' ? `<label class="custom-weight-label">Enter quantity (grams)<span class="weight-input"><input id="custom-weight" type="number" inputmode="numeric" min="50" max="100000" step="1" value="${escapeHtml(selection.grams || '')}" aria-describedby="custom-weight-error"/><b>g</b></span><small id="custom-weight-error" class="custom-weight-error" role="alert"></small></label><div class="custom-price-summary"><strong data-role="custom-price">${grams > 0 ? money2(chosenPrice) : '₹0.00'}</strong><small data-role="custom-formula">(${money(unitPrice)}/kg × ${grams > 0 ? (grams / 1000).toFixed(2) : '0.00'} kg)</small></div>` : ''}</section>` : '';
+  const recommendations = state.products.filter(row => row.category === product.category && row.id !== product.id).slice(0, 4);
+  const detailRows = [
+    ['leaf','About this item', product.description || `${product.name}, selected with care for your home.`],
+    ['❄','Freshness & storage', loose ? `Store ${product.name.toLowerCase()} in a cool, dry place in an airtight container.` : `Store as directed on the ${product.name} packaging and use before the printed date.`],
+    ['▣','Delivery & returns', 'Delivery options and estimated arrival are based on your selected address. Contact support if an item arrives damaged.']
+  ];
+  const cartSubtotal = state.cart.items?.some(item => item.saleType === 'loose') ? money2(state.cart.subtotal) : money(state.cart.subtotal);
+  const cartBar = `<aside class="product-sticky-cart"><span class="sticky-cart-icon">▱</span><strong>${state.cart.count} item${state.cart.count === 1 ? '' : 's'} · ${cartSubtotal}</strong><button data-action="cart">View Cart&nbsp; ›</button></aside>`;
+  return `<article class="product-detail-page ${loose ? 'loose-product-page' : 'packaged-product-page'}"><section class="product-page-visual" style="background:${escapeHtml(product.color || '#f8edf0')}"><button class="product-back" data-action="product-back" aria-label="Back">←</button><button class="favorite-button product-page-heart ${saved ? 'saved' : ''}" data-action="favorite" data-id="${escapeHtml(product.id)}" aria-label="${saved ? 'Remove from' : 'Add to'} wishlist">♡</button>${loose ? '<span class="loose-badge">Loose</span>' : ''}${visual}<span class="product-photo-caption">${escapeHtml(product.name)}</span></section><div class="product-page-content"><span class="product-category-chip">${escapeHtml(categoryById(product.category)?.name || 'Grocery')} ›</span><h1>${escapeHtml(product.name)}</h1><p class="product-page-subtitle">${loose ? 'Premium quality, fresh and hygienic' : escapeHtml(product.detail || 'Fresh pack')}</p>${rating ? `<div class="product-rating"><span>★</span><strong>${rating.toFixed(1)}</strong><small>(${(reviews / 1000).toFixed(1)}K reviews)</small><button data-action="reviews">Read reviews</button></div>` : ''}<div class="product-page-price">${loose ? `${money(unitPrice)}/kg <span class="fresh-chip">Fresh &amp; Clean</span>` : `${money(unitPrice)}${product.mrp > unitPrice ? `<s>${money(product.mrp)}</s><span class="discount-pill">${Math.round((1-unitPrice/product.mrp)*100)}% off</span>` : ''}`}</div><div class="delivery-promise"><span>⌖</span><div><strong>Delivery in ${escapeHtml(deliveryEstimate)}</strong><small>${loose ? 'Packed fresh after you place the order.' : `Fresh ${escapeHtml(product.name.toLowerCase())} delivered fresh to your doorstep.`}</small></div></div>${quantityOptions}${purchaseRow}<section class="product-accordions"><h2>Product details</h2>${detailRows.map(([icon,title,body]) => `<details class="product-accordion"><summary><i>${icon === 'leaf' ? '❧' : icon}</i><strong>${title}</strong><span>⌄</span></summary><p>${escapeHtml(body)}</p></details>`).join('')}</section>${rating ? `<section class="review-section" id="product-reviews"><div class="section-head"><div><h2>Customer reviews</h2><p>What shoppers say about ${escapeHtml(product.name)}</p></div><span class="review-score">★ ${rating.toFixed(1)}</span></div><article class="review-card"><strong>Fresh quality</strong><p>Good quality and packed carefully. I would order this again.</p><small>Verified purchase · PurainaMart customer</small></article></section>` : ''}<section class="recommendation-section"><div class="section-head"><div><h2>You may also like</h2></div><button class="text-link" data-action="category" data-id="${escapeHtml(product.category)}">See all&nbsp; →</button></div><div class="recommendation-row">${recommendations.map(productCard).join('')}</div></section></div>${cartBar}</article>`;
 }
 function renderCategories() {
   const selected = categoryById(state.selectedCategory);
@@ -272,41 +340,87 @@ function renderAddressNotice(addressId = state.activeAddress?.id) {
   return '';
 }
 function renderDeliveryDestination(address = state.activeAddress) {
-  const title = address ? `${address.label} · ${address.line1}` : 'Select a delivery address';
-  const detail = address ? [address.recipientName, address.line2, address.city].filter(Boolean).join(' · ') : 'Choose where you’d like your order delivered';
-  const area = address ? (address.deliveryAreaName || (address.deliveryAreaUnavailable ? 'Area unavailable' : 'Area not selected')) : '';
-  return `<section class="cart-destination"><span class="cart-destination-pin" aria-hidden="true">⌖</span><div class="cart-destination-copy"><small>DELIVER TO</small><strong>${escapeHtml(title)}</strong><span>${escapeHtml(detail)}</span>${address ? `<span class="cart-delivery-area">Delivery area: ${escapeHtml(area)}</span>` : ''}</div><button type="button" data-action="address-picker">${address ? 'Change' : 'Select'}</button></section>${address ? renderAddressNotice(address.id) : ''}`;
+  const title = address ? `${address.label} · ${address.city}` : 'Select a delivery address';
+  const detail = address ? [address.line1, address.line2, address.city, address.state, address.postalCode].filter(Boolean).join(', ') : 'Choose where you’d like your order delivered';
+  return `<section class="cart-destination"><span class="cart-destination-pin" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span><div class="cart-destination-copy"><small>DELIVER TO</small><strong>${escapeHtml(title)}</strong><span>${escapeHtml(detail)}</span></div><button type="button" data-action="address-picker">${address ? 'Change' : 'Select'}</button></section>${address ? renderAddressNotice(address.id) : ''}`;
 }
 function renderFreeDeliveryMessage() {
   if (state.cart.deliveryAvailable === false) return '';
+  if (!state.cart.items?.length || state.cart.freeDeliveryRemaining == null && !state.cart.freeDeliveryUnlocked) return '';
   if (state.cart.freeDeliveryUnlocked) {
     const saved = Number(state.cart.freeDeliverySavings || 0);
-    return `<div class="free-delivery-note unlocked"><span aria-hidden="true">✓</span><strong>Free delivery unlocked</strong>${saved > 0 ? `<small>You saved ${money(saved)} on delivery</small>` : ''}</div>`;
+    return `<div class="free-delivery-card unlocked"><span class="free-truck-orb">${truckIcon()}</span><div class="free-delivery-copy"><strong><span aria-hidden="true">✓</span> You’ve unlocked FREE delivery</strong><span class="free-delivery-track"><i style="width:100%"></i></span><small>${saved > 0 ? `You saved ${money(saved)} on delivery` : 'Your order qualifies for free delivery'}</small></div></div>`;
   }
   const remaining = state.cart.freeDeliveryRemaining;
   if (remaining == null || Number(remaining) <= 0) return '';
   const progress = Math.min(100, Math.max(0, Number(state.cart.freeDeliveryProgressPercent || 0)));
-  return `<div class="free-delivery-note progress"><div><strong>${money(remaining)} away from free delivery</strong><span class="free-delivery-track"><i style="width:${progress}%"></i></span></div></div>`;
+  return `<div class="free-delivery-card progress"><span class="free-truck-orb">${truckIcon()}</span><div class="free-delivery-copy"><strong>You’re ${money(remaining)} away from FREE delivery</strong><span class="free-delivery-track"><i style="width:${progress}%"></i></span><small>Add a little more to unlock free delivery</small></div></div>`;
 }
 function renderCouponOffers() {
   const offers = state.cart.couponOffers || [];
-  if (!offers.length) return '';
-  return `<section class="coupon-offers"><h3>Coupons & offers</h3>${offers.map(offer => `<article class="coupon-offer ${offer.eligible ? '' : 'ineligible'}"><img src="/assets/customer/images/offer-default.png" alt=""/><div><strong>${escapeHtml(offer.label || offer.code)}</strong><small>${offer.discountType === 'percentage' ? `${Number(offer.discount)}% off` : `${money(offer.discount)} off`}${offer.maximumDiscount ? ` · up to ${money(offer.maximumDiscount)}` : ''} · min. ${money(offer.minimum)}</small>${!offer.eligible ? `<small class="offer-remaining">Add ${money(offer.remaining)} more to use</small>` : ''}</div><button type="button" data-action="apply-coupon" data-code="${escapeHtml(offer.code)}" ${!offer.eligible || state.cart.activeCoupon?.code === offer.code ? 'disabled' : ''}>${state.cart.activeCoupon?.code === offer.code ? 'Applied' : offer.eligible ? 'Apply' : 'Unavailable'}</button></article>`).join('')}</section>`;
+  const offer = offers.find(row => row.eligible && row.code === 'WELCOME50') || offers.find(row => row.eligible) || offers.find(row => row.code === 'WELCOME50') || offers[0];
+  if (!offer && !state.cart.activeCoupon) return `<section class="cart-offer-preview"><div class="cart-offer-head"><h3>Offers for you</h3><button class="text-link" data-action="offers">View coupons&nbsp; →</button></div><p>No eligible offers are available for this cart right now.</p></section>`;
+  const current = state.cart.activeCoupon;
+  const candidate = offer;
+  const applyEligible = candidate?.eligible;
+  const benefit = candidate?.discountType === 'free_delivery' ? 'Free delivery on eligible orders' : candidate?.discountType === 'percentage' ? `${Number(candidate.discount)}% off your order` : `${money(candidate?.discount)} off your order`;
+  return `<section class="cart-offer-preview"><div class="cart-offer-head"><h3>Offers for you</h3><button class="text-link" data-action="offers">View coupons&nbsp; →</button></div>${current ? `<article class="cart-offer-card applied ${current.discountType === 'free_delivery' ? 'delivery-offer' : ''}"><span class="offer-art ${current.discountType === 'free_delivery' ? 'delivery-art' : 'discount-art'}">${current.discountType === 'free_delivery' ? truckIcon() : '%'}</span><div><strong>${escapeHtml(current.label || current.code)}</strong><small>${escapeHtml(current.code)} · ${current.discountType === 'free_delivery' ? 'free delivery applied' : 'applied to this order'}</small></div><button type="button" data-action="remove-coupon">Remove</button></article>` : candidate ? `<article class="cart-offer-card ${candidate.discountType === 'free_delivery' ? 'delivery-offer' : ''}"><span class="offer-art ${candidate.discountType === 'free_delivery' ? 'delivery-art' : 'discount-art'}">${candidate.discountType === 'free_delivery' ? truckIcon() : '%'}</span><div><strong>${escapeHtml(candidate.code)}</strong><small>${escapeHtml(candidate.label || benefit)}</small><small class="offer-minimum">Min. order ${money(candidate.minimum)}</small>${!applyEligible && candidate.ineligibleReason ? `<small class="offer-eligibility">${escapeHtml(candidate.ineligibleReason)}</small>` : ''}</div><button type="button" data-action="apply-coupon" data-code="${escapeHtml(candidate.code)}" ${!applyEligible ? 'disabled' : ''}>Apply</button></article>` : ''}</section>`;
 }
 function renderDeliveryLine() {
   return `<div class="bill-row"><span>Delivery</span><strong>${state.cart.deliveryAvailable === false ? 'Unavailable' : Number(state.cart.delivery || 0) === 0 ? '<span class="free-fee">FREE</span>' : money(state.cart.delivery)}</strong></div>`;
 }
 function renderDiscountLines() {
-  return `${Number(state.cart.itemSavings || 0) > 0 ? `<div class="bill-row savings"><span>Product savings</span><strong>− ${money(state.cart.itemSavings)}</strong></div>` : ''}${Number(state.cart.discount || 0) > 0 ? `<div class="bill-row discount"><span>${escapeHtml(state.cart.activeCoupon?.label || 'Coupon discount')}</span><strong>− ${money(state.cart.discount)}</strong></div>` : ''}`;
+  return `${Number(state.cart.itemSavings || 0) > 0 ? `<div class="bill-row savings"><span>Product savings <small class="included-note">included in item prices</small></span><strong>− ${money(state.cart.itemSavings)}</strong></div>` : ''}${Number(state.cart.discount || 0) > 0 ? `<div class="bill-row discount"><span>${escapeHtml(state.cart.activeCoupon?.label || 'Coupon discount')}</span><strong>− ${money(state.cart.discount)}</strong></div>` : ''}`;
 }
 function renderCart() {
   const rows = state.cart.items;
-  if (!rows.length) return `<div class="page-title"><div><h1>Your cart</h1><p>Every good plan starts somewhere</p></div></div>${emptyState('Your cart is waiting', 'Add a few favourites and they’ll show up here.', '🛍️')}`;
-  const rowHtml = rows.map(item => `<div class="cart-line ${item.isAvailable===false?'cart-line-unavailable':''}"><div class="cart-line-visual" style="background:${escapeHtml(item.color)}">${item.image ? productImage(item, 'cart-product-photo') : escapeHtml(item.emoji)}</div><div class="cart-line-main"><div class="cart-line-title">${escapeHtml(item.name)}</div><div class="cart-line-sub">${item.variantLabel?`${item.quantity} × ${escapeHtml(item.variantLabel)}`:escapeHtml(item.detail)}</div>${item.isAvailable===false?`<p class="cart-availability-error" role="alert">${escapeHtml(item.availabilityError||'This item is unavailable. Remove it to continue.')}</p>`:''}<div class="cart-line-pricing"><span class="cart-line-price">${priceMarkup(item.price,item.mrp)}</span><strong>${money(item.lineTotal)}</strong></div><div class="cart-line-controls"><span class="stepper" aria-label="Quantity for ${escapeHtml(item.name)}"><button aria-label="Remove one ${escapeHtml(item.name)}" data-action="quantity" data-id="${escapeHtml(item.id)}" data-variant-id="${escapeHtml(item.variantId||'')}" data-delta="-1" ${quantityRequestPending(item.id,item.variantId||null)?'disabled':''}>−</button><strong>${item.quantity}</strong><button aria-label="Add one ${escapeHtml(item.name)}" data-action="quantity" data-id="${escapeHtml(item.id)}" data-variant-id="${escapeHtml(item.variantId||'')}" data-delta="1" ${quantityRequestPending(item.id,item.variantId||null)||item.isAvailable===false||item.quantity>=(item.variantId?(item.saleType==='packed'?Number(item.variantStock):Math.floor(Number(item.variantStock)/Number(item.quantityPerUnit))):productQuantityLimit(productForOrderItem(item)))?'disabled':''}>+</button></span><button class="remove-line" data-action="remove" data-id="${escapeHtml(item.id)}" data-variant-id="${escapeHtml(item.variantId||'')}" ${quantityRequestPending(item.id,item.variantId||null)?'disabled':''}>Remove</button></div></div></div>`).join('');
+  if (!rows.length) return `<div class="page-title"><div><h1>Your cart</h1><p>Every good plan starts somewhere</p></div></div>${emptyState('Your cart is waiting', 'Add a few favourites and they’ll show up here.', '🛍️')}<button class="primary-button cart-empty-continue" data-action="browse">Browse groceries</button>`;
+  const rowHtml = rows.map(item => {
+    const unit = item.saleType === 'loose'
+      ? `${money2(Number(item.price) * 1000 / Number(item.quantityPerUnit || 1000))}/kg`
+      : cartUnitPriceCopy(item);
+    const packageIcon = item.saleType === 'loose'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M5 7l14 10M19 7 5 17"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7 12 3l8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10"/></svg>';
+    const total = item.saleType === 'loose' ? money2(item.lineTotal) : money(item.lineTotal);
+    return `<div class="cart-line ${item.isAvailable===false?'cart-line-unavailable':''}"><div class="cart-line-visual" style="background:${escapeHtml(item.color)}">${item.image ? productImage(item, 'cart-product-photo') : escapeHtml(item.emoji)}</div><div class="cart-line-main"><div class="cart-line-summary"><div class="cart-line-title">${escapeHtml(item.name)}</div><div class="cart-line-sub"><span class="cart-item-type-icon">${packageIcon}</span>${cartItemQuantityCopy(item)}</div></div><div class="cart-line-pricing"><strong class="cart-line-total">${total}</strong><small class="cart-line-price">${unit}</small></div>${item.isAvailable===false?`<p class="cart-availability-error" role="alert">${escapeHtml(item.availabilityError||'This item is unavailable. Remove it to continue.')}</p>`:''}<div class="cart-line-controls"><span class="stepper" aria-label="Quantity for ${escapeHtml(item.name)}"><button aria-label="Remove one ${escapeHtml(item.name)}" data-action="quantity" data-id="${escapeHtml(item.id)}" data-variant-id="${escapeHtml(item.variantId||'')}" data-delta="-1" ${quantityRequestPending(item.id,item.variantId||null)?'disabled':''}>−</button><strong>${item.quantity}</strong><button aria-label="Add one ${escapeHtml(item.name)}" data-action="quantity" data-id="${escapeHtml(item.id)}" data-variant-id="${escapeHtml(item.variantId||'')}" data-delta="1" ${quantityRequestPending(item.id,item.variantId||null)||item.isAvailable===false||item.quantity>=(item.variantId?(item.saleType==='packed'?Number(item.variantStock):Math.floor(Number(item.variantStock)/Number(item.quantityPerUnit))):productQuantityLimit(productForOrderItem(item)))?'disabled':''}>+</button></span><button class="remove-line" data-action="remove" data-id="${escapeHtml(item.id)}" data-variant-id="${escapeHtml(item.variantId||'')}" ${quantityRequestPending(item.id,item.variantId||null)?'disabled':''}>Remove</button></div></div></div>`;
+  }).join('');
   const coupon = state.activeCoupon;
-  const canCheckout = !state.activeAddress || state.cart.deliveryAvailable === false || state.cart.minimumOrderMet !== false;
+  const canCheckout = Boolean(state.activeAddress) && state.cart.deliveryAvailable !== false && state.cart.minimumOrderMet !== false && rows.every(item => item.isAvailable !== false);
   const savingsNote = Number(state.cart.totalSavings || 0) > 0 ? `<p class="cart-savings-note">You’re saving ${money(state.cart.totalSavings)} on this order</p>` : '';
-  return `<div class="cart-page"><div class="page-title"><div><h1>Your cart</h1><p>${state.cart.count} item${state.cart.count === 1 ? '' : 's'} in your bag</p></div></div>${renderDeliveryDestination()}<div class="cart-layout"><section class="cart-list"><div class="cart-list-head"><h2>Items in your cart</h2><button class="clear-cart" data-action="clear-cart">Clear cart</button></div>${rowHtml}<button class="continue-shopping" data-action="browse">＋ Add more items</button></section><aside class="summary-card"><h2>Bill details</h2><form id="coupon-form" class="coupon-row"><input name="code" placeholder="Enter coupon code" value="${coupon ? escapeHtml(coupon.code) : ''}" aria-label="Coupon code"/><button type="submit" ${coupon ? 'disabled' : ''}>Apply</button></form>${coupon ? `<div class="coupon-success"><img src="/assets/customer/images/offer-default.png" alt=""/> ✓ ${escapeHtml(coupon.label)} <button class="remove-line" data-action="remove-coupon">Remove</button></div>` : ''}${renderCouponOffers()}${renderFreeDeliveryMessage()}<div class="bill-row"><span>Item total</span><strong>${money(state.cart.subtotal)}</strong></div>${renderDiscountLines()}${renderDeliveryLine()}<div class="bill-row"><span>Platform fee</span><strong>${money(state.cart.platform)}</strong></div><div class="bill-divider"></div><div class="bill-row bill-total"><span>To pay</span><strong>${money(state.cart.total)}</strong></div>${savingsNote}<button class="primary-button checkout-button" data-action="checkout" ${canCheckout ? '' : 'disabled'}><span>Continue to checkout</span><span>${money(state.cart.total)}&nbsp; →</span></button><p class="fineprint">Sample prices and checkout only. No real payment will be taken.</p></aside></div><div class="cart-mobile-checkout"><div><small>${state.cart.count} item${state.cart.count === 1 ? '' : 's'} · total payable</small><strong>${money(state.cart.total)}</strong></div><button data-action="checkout" ${canCheckout ? '' : 'disabled'}>Proceed&nbsp; →</button></div></div>`;
+  return `<div class="cart-page"><div class="page-title"><div><h1>Your cart</h1><p>${cartCountCopy()}</p></div></div>${renderDeliveryDestination()}${renderFreeDeliveryMessage()}<div class="cart-layout"><section class="cart-list"><div class="cart-list-head"><h2>Items in your cart</h2><button class="clear-cart" data-action="clear-cart">Clear cart</button></div>${rowHtml}<div class="cart-list-actions"><button class="continue-shopping" data-action="browse">＋ Add more items</button><button class="text-link" data-action="browse">Continue shopping&nbsp; →</button></div></section><aside class="summary-card"><div class="cart-bill-heading"><h2>Bill details</h2></div>${renderCouponOffers()}<div class="bill-row"><span>Item total</span><strong>${money(state.cart.subtotal)}</strong></div>${renderDiscountLines()}${renderDeliveryLine()}<div class="bill-row"><span>Platform fee</span><strong>${money(state.cart.platform)}</strong></div><div class="bill-divider"></div><div class="bill-row bill-total"><span>To pay</span><strong>${money(state.cart.total)}</strong></div>${savingsNote}<p class="checkout-address-hint ${state.activeAddress && state.cart.deliveryAvailable !== false && state.cart.minimumOrderMet !== false ? 'valid' : ''}">${!state.activeAddress ? 'Select a delivery address to continue.' : state.cart.deliveryAvailable === false ? 'Delivery isn’t available at this address.' : state.cart.minimumOrderMet === false ? escapeHtml(addressNoticeCopy()) : 'Delivery address confirmed'}</p><button class="primary-button checkout-button" data-action="checkout" ${canCheckout ? '' : 'disabled'}><span>Continue to checkout</span><span>${money(state.cart.total)}&nbsp; →</span></button></aside></div><div class="cart-mobile-checkout"><div><small>${cartCountCopy()} · total payable</small><strong>${money(state.cart.total)}</strong></div><button data-action="checkout" ${canCheckout ? '' : 'disabled'}>Proceed&nbsp; →</button></div></div>`;
+}
+function renderOffers() {
+  const filters = [['all','All'],['order','Order offers'],['delivery','Free delivery'],['product','Free product']];
+  const coupons = (state.coupons || []).filter(coupon => coupon.isActive !== false);
+  const orderCoupons = coupons.filter(coupon => !['free_delivery','free_product'].includes(coupon.discountType) && !coupon.rewardId);
+  const deliveryCoupons = coupons.filter(coupon => coupon.discountType === 'free_delivery');
+  const rewards = state.referralData?.rewards || [];
+  const availableRewards = rewards.filter(reward => reward.status === 'available' && reward.type === 'free_product');
+  const card = coupon => {
+    const active = state.cart.activeCoupon?.code === coupon.code;
+    const benefit = coupon.discountType === 'percentage' ? `${Number(coupon.discount)}% off${coupon.maximumDiscount ? ` up to ${money(coupon.maximumDiscount)}` : ''}` : `${money(coupon.discount)} off your order`;
+    const details = (state.cart.couponOffers || []).find(row => row.code === coupon.code);
+    const ineligibleReason = details?.ineligibleReason || (Number(coupon.minimum || 0) > Number(state.cart.subtotal || 0) ? `Add ${money(Number(coupon.minimum) - Number(state.cart.subtotal || 0))} more to qualify.` : 'This offer is not available for this account.');
+    return `<article class="offer-group order-group"><div class="offer-group-title"><span class="offer-mini-icon">✦</span><strong>${escapeHtml(coupon.label || 'ORDER OFFER')}</strong></div><div class="offer-detail-card"><span class="offer-art discount-art">%</span><div class="offer-detail-copy"><strong>${escapeHtml(coupon.code)}</strong><span>${escapeHtml(coupon.label || benefit)}</span><small>Min. order ${money(coupon.minimum || 0)}</small>${!active && !details?.eligible ? `<small class="offer-eligibility">${escapeHtml(ineligibleReason)}</small>` : ''}<a href="#offer-terms" data-action="offer-terms">View terms</a></div>${active ? `<div class="offer-apply-state"><button class="offer-apply" disabled>Applied</button><button class="offer-remove" data-action="remove-coupon">Remove</button></div>` : `<button class="offer-apply" data-action="apply-coupon" data-code="${escapeHtml(coupon.code)}" ${!details?.eligible ? 'disabled' : ''}>Apply</button>`}</div></article>`;
+  };
+  const delivery = coupon => {
+    const status = (state.cart.couponOffers || []).find(row => row.code === coupon.code), active = state.cart.activeCoupon?.code === coupon.code;
+    const reason = status?.ineligibleReason || (Number(coupon.minimum || 0) > Number(state.cart.subtotal || 0) ? `Add ${money(Number(coupon.minimum) - Number(state.cart.subtotal || 0))} more to qualify for free delivery.` : 'Choose a delivery area where this offer is available.');
+    return `<article class="offer-group delivery-group"><div class="offer-group-title"><span class="offer-mini-truck">${truckIcon()}</span><strong>FREE DELIVERY</strong></div><div class="offer-detail-card"><span class="offer-art delivery-art">${truckIcon()}</span><div class="offer-detail-copy"><strong>${escapeHtml(coupon.code)}</strong><span>${escapeHtml(coupon.label || 'Free delivery on eligible orders')}</span><small>Min. order ${money(coupon.minimum || 0)}</small>${!active && !status?.eligible ? `<small class="offer-eligibility">${escapeHtml(reason)}</small>` : ''}<a href="#offer-terms" data-action="offer-terms">View terms</a></div>${active ? `<div class="offer-apply-state"><button class="offer-apply" disabled>Applied</button><button class="offer-remove" data-action="remove-coupon">Remove</button></div>` : `<button class="offer-apply" data-action="apply-coupon" data-code="${escapeHtml(coupon.code)}" ${!status?.eligible ? 'disabled' : ''}>Apply</button>`}</div></article>`;
+  };
+  const rewardsHtml = state.user && state.referralLoading ? `<p class="offers-empty">Loading referral rewards…</p>` : state.user ? availableRewards.map(reward => {
+    const product = reward.product || {};
+    return `<article class="offer-group reward-group"><div class="offer-group-title"><span class="offer-mini-gift">${giftIcon()}</span><strong>REFERRAL REWARD</strong></div><div class="offer-detail-card"><span class="offer-art gift-art">${giftIcon()}</span><div class="offer-detail-copy"><strong>Your free product reward</strong><span>Earned through your referral activity</span><div class="reward-offer-product">${product.image ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name || 'Reward product')}"/>` : ''}<span><b>Free product: ${escapeHtml(product.name || 'Reward product')}</b><small>${escapeHtml(product.detail || 'Available after a qualifying referral')}</small></span></div><a href="#offer-terms" data-action="offer-terms">View terms</a></div><button class="offer-apply" data-action="get-reward" data-id="${escapeHtml(reward.id)}">Apply reward</button></div></article>`;
+  }).join('') : `<article class="offer-group reward-group"><div class="offer-group-title"><span class="offer-mini-gift">${giftIcon()}</span><strong>REFERRAL REWARD</strong></div><div class="offer-detail-card"><span class="offer-art gift-art">${giftIcon()}</span><div class="offer-detail-copy"><strong>Your referral rewards</strong><span>Sign in to view rewards earned from friends.</span></div><button class="offer-apply" data-action="offers-login">Sign in</button></div></article>`;
+  const serviceAvailable = state.cart.freeDeliveryThreshold != null && state.cart.deliveryAvailable !== false;
+  const deliveryProgress = serviceAvailable ? `<article class="offer-group delivery-group"><div class="offer-group-title"><span class="offer-mini-truck">${truckIcon()}</span><strong>AREA FREE-DELIVERY BENEFIT</strong></div><div class="offer-detail-card"><span class="offer-art delivery-art">${truckIcon()}</span><div class="offer-detail-copy"><strong>${state.cart.freeDeliveryUnlocked ? 'Free delivery unlocked' : 'Free delivery on eligible orders'}</strong><span>${state.cart.freeDeliveryUnlocked ? 'This benefit is already applied automatically.' : `Unlock free delivery at ${money(state.cart.freeDeliveryThreshold)}`}</span><small>${state.cart.freeDeliveryUnlocked ? 'No coupon code needed' : `${money(state.cart.freeDeliveryRemaining || state.cart.freeDeliveryThreshold)} left on your cart`}</small></div><span class="automatic-delivery-state">${state.cart.freeDeliveryUnlocked ? 'Applied' : 'Automatic'}</span></div></article>` : '';
+  const filter = state.offersFilter;
+  let content = '';
+  if (filter === 'all' || filter === 'order') content += orderCoupons.length ? orderCoupons.map(card).join('') : `<p class="offers-empty">No order offers are available right now.</p>`;
+  if (filter === 'all' || filter === 'delivery') content += deliveryCoupons.length ? deliveryCoupons.map(delivery).join('') : serviceAvailable ? deliveryProgress : `<p class="offers-empty">No free-delivery coupon is configured. Area benefits apply automatically after you select a delivery address.</p>`;
+  if (filter === 'all' || filter === 'product') content += state.user ? rewardsHtml || `<p class="offers-empty">No free-product rewards are available yet.</p>` : rewardsHtml;
+  return `<div class="offers-page"><div class="offers-heading"><button class="offers-back" data-action="cart" aria-label="Back to cart">‹</button><div><h1>Coupons &amp; offers</h1><p>Choose the best offer for your order</p></div></div><div class="offers-filters" role="tablist" aria-label="Offer categories">${filters.map(([id,label]) => `<button role="tab" aria-selected="${filter === id}" class="${filter === id ? 'active' : ''}" data-action="offers-filter" data-filter="${id}">${label}</button>`).join('')}</div><div class="offers-list">${content}</div><details class="offers-terms" id="offer-terms" ${state.offersTermsOpen ? 'open' : ''}><summary><span class="terms-info">i</span><strong>How coupons work</strong><span class="terms-chevron">⌄</span></summary><ul><li>Apply one order offer at a time.</li><li>Offers are validated again at checkout.</li><li>Terms and minimum order values apply.</li></ul></details><section class="offers-payment-note"><h2>Payment options</h2><p>Cash on delivery is available. UPI is simulated in this local demo; wallets and online payment services are not connected.</p></section></div>`;
 }
 function renderCheckout() {
   const rows = state.addresses;
@@ -314,7 +428,7 @@ function renderCheckout() {
   return `<div class="page-title"><button class="back-button" data-action="cart">‹</button><div><h1>Checkout</h1><p>Delivery and payment details</p></div></div><div class="checkout-layout"><section class="panel-card">
     <div class="checkout-section"><h2><span class="step-number">1</span> Delivery address</h2>${rows.length ? rows.map(a => `<label class="address-option ${a.id === (state.checkoutAddressId || state.activeAddress?.id) ? 'selected' : ''}"><input type="radio" name="checkout-address" value="${escapeHtml(a.id)}" ${a.id === (state.checkoutAddressId || state.activeAddress?.id) ? 'checked' : ''}/><span><strong>${escapeHtml(a.label)} · ${escapeHtml(a.deliveryAreaName || (a.deliveryAreaUnavailable ? 'Area unavailable' : 'Area not selected'))}</strong><p>${escapeHtml(a.recipientName || '')}${a.recipientName ? ' · ' : ''}${escapeHtml(a.line1)}${a.line2 ? `, ${a.line2}` : ''}, ${escapeHtml(a.city)}</p></span></label>`).join('') : `<p class="form-hint">No saved address yet. Add a delivery location to continue.</p>`}<button class="add-address-link" data-action="add-address">＋ Add a new address</button>${renderAddressNotice(selectedAddressId())}</div>
     <div class="checkout-section"><h2><span class="step-number">2</span> Payment method</h2><label class="payment-option ${state.checkoutPayment === 'cod' ? 'selected' : ''}"><input type="radio" name="payment" value="cod" ${state.checkoutPayment === 'cod' ? 'checked' : ''}/><span class="payment-brand">💵</span><span><strong>Cash on delivery</strong><p>Pay the delivery partner when your order arrives</p></span></label>${state.mode === 'production' ? '<p class="fineprint">Online payment is unavailable until merchant processing and server verification are configured.</p>' : `<label class="payment-option ${state.checkoutPayment === 'upi' ? 'selected' : ''}"><input type="radio" name="payment" value="upi" ${state.checkoutPayment === 'upi' ? 'checked' : ''}/><span class="payment-brand">↗</span><span><strong>UPI · demo payment</strong><p>Simulated confirmation. No payment app or bank is contacted.</p></span></label><p class="fineprint">Real payment integrations require merchant credentials and a payment provider.</p>`}</div>
-  </section><aside class="summary-card"><h2>Order summary</h2><div class="checkout-summary-items">${state.cart.items.map(item => `<div class="mini-item checkout-mini-item"><span class="checkout-item-label">${item.image ? `<img class="checkout-item-photo" src="${escapeHtml(item.image)}" alt="" loading="lazy"/>` : `<span class="checkout-item-emoji" aria-hidden="true">${escapeHtml(item.emoji || '🛍️')}</span>`}<span class="checkout-item-name">${item.quantity} × ${escapeHtml(item.name)}</span></span><strong>${money(item.lineTotal)}</strong></div>`).join('')}</div>${renderFreeDeliveryMessage()}<div class="bill-row"><span>Items</span><strong>${money(state.cart.subtotal)}</strong></div>${renderDiscountLines()}${renderDeliveryLine()}<div class="bill-row"><span>Platform fee</span><strong>${money(state.cart.platform)}</strong></div><div class="bill-divider"></div><div class="bill-row bill-total"><span>To pay</span><strong>${money(state.cart.total)}</strong></div>${Number(state.cart.totalSavings || 0) > 0 ? `<p class="cart-savings-note">You’re saving ${money(state.cart.totalSavings)} on this order</p>` : ''}<button class="primary-button checkout-button" data-action="place-order" ${rows.length && state.cart.deliveryAvailable !== false && state.cart.minimumOrderMet !== false ? '' : 'disabled'}><span>${state.mode === 'production' ? 'Place order' : 'Place demo order'}</span><span>${money(state.cart.total)}&nbsp; →</span></button>${state.mode === 'production' ? '<p class="fineprint">Payment is due on delivery. This app is not connected to a live payment provider.</p>' : '<p class="fineprint">This creates a local demo order. It does not contact Zepto or collect payment.</p>'}</aside></div>`;
+  </section><aside class="summary-card"><h2>Order summary</h2><div class="checkout-summary-items">${state.cart.items.map(item => `<div class="mini-item checkout-mini-item"><span class="checkout-item-label">${item.image ? `<img class="checkout-item-photo" src="${escapeHtml(item.image)}" alt="" loading="lazy"/>` : `<span class="checkout-item-emoji" aria-hidden="true">${escapeHtml(item.emoji || '🛍️')}</span>`}<span class="checkout-item-name">${escapeHtml(cartItemQuantityCopy(item))} · ${escapeHtml(item.name)}</span></span><strong>${item.saleType === 'loose' ? money2(item.lineTotal) : money(item.lineTotal)}</strong></div>`).join('')}</div>${renderFreeDeliveryMessage()}<div class="bill-row"><span>Items</span><strong>${money(state.cart.subtotal)}</strong></div>${renderDiscountLines()}${renderDeliveryLine()}<div class="bill-row"><span>Platform fee</span><strong>${money(state.cart.platform)}</strong></div><div class="bill-divider"></div><div class="bill-row bill-total"><span>To pay</span><strong>${money(state.cart.total)}</strong></div>${Number(state.cart.totalSavings || 0) > 0 ? `<p class="cart-savings-note">You’re saving ${money(state.cart.totalSavings)} on this order</p>` : ''}<button class="primary-button checkout-button" data-action="place-order" ${rows.length && state.cart.deliveryAvailable !== false && state.cart.minimumOrderMet !== false ? '' : 'disabled'}><span>${state.mode === 'production' ? 'Place order' : 'Place demo order'}</span><span>${money(state.cart.total)}&nbsp; →</span></button>${state.mode === 'production' ? '<p class="fineprint">Payment is due on delivery. This app is not connected to a live payment provider.</p>' : '<p class="fineprint">This creates a local demo order. It does not contact Zepto or collect payment.</p>'}</aside></div>`;
 }
 async function loadReferralData() {
   state.referralLoading = true;
@@ -646,6 +760,7 @@ async function changeQuantity(id, delta, variantId = null) {
     try {
       if (state.modal?.type === 'product' || ['home', 'categories', 'search'].includes(state.view)) syncProductQuantity(id);
       if (state.view === 'cart') render();
+      if (state.view === 'product') render();
     } catch (error) { toast(error.message); }
   }
 }
@@ -668,8 +783,24 @@ async function toggleWishlist(id) {
 function setView(view) {
   state.view = view;
   state.modal = null;
+  state.selectedProductId = null;
+  if (new URLSearchParams(location.search).has('product')) history.replaceState({ view }, '', '/');
   if (view === 'account' && !state.user) { render(); return; }
   render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function openProduct(id) {
+  const product = state.products.find(row => row.id === id);
+  if (!product) return;
+  if (state.view !== 'product') state.previousProductView = state.view;
+  state.selectedProductId = id; state.view = 'product'; state.modal = null;
+  history.pushState({ view: state.previousProductView }, '', `/?product=${encodeURIComponent(id)}`);
+  render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function leaveProduct() {
+  const destination = state.previousProductView || 'home';
+  state.selectedProductId = null;
+  if (new URLSearchParams(location.search).has('product')) history.replaceState({ view: destination }, '', '/');
+  state.view = destination; render(); window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function selectedAddressId() { return $('input[name="checkout-address"]:checked')?.value || state.checkoutAddressId || state.activeAddress?.id; }
 async function placeOrder() {
@@ -730,6 +861,10 @@ document.addEventListener('click', async event => {
   if (action === 'browse') { state.selectedCategory = 'all'; return setView('categories'); }
   if (action === 'categories') return setView('categories');
   if (action === 'cart') return setView('cart');
+  if (action === 'offers' || action === 'wallet') { state.offersFilter = 'all'; state.referralData = null; state.referralLoading = Boolean(state.user); setView('offers'); if (state.user) { await loadReferralData(); if (state.view === 'offers') render(); } return; }
+  if (action === 'offers-filter') { state.offersFilter = button.dataset.filter; return render(); }
+  if (action === 'offer-terms') { state.offersTermsOpen = true; render(); $('#offer-terms')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+  if (action === 'offers-login') { state.returnView = 'offers'; return openAuth(); }
   if (action === 'account') return setView('account');
   if (action === 'open-referrals') return openReferrals();
   if (action === 'retry-referrals') { state.referralLoading = true; state.referralError = null; render(); await loadReferralData(); if (state.view === 'referrals') render(); return; }
@@ -744,7 +879,45 @@ document.addEventListener('click', async event => {
   if (action === 'mark-notifications-read') { try { await post('/api/notifications/read-all'); const result = await api('/api/notifications'); state.notifications = result.notifications; state.notificationUnread = result.unread; updateNotificationHistory(); setNav(); } catch (error) { toast(error.message); } return; }
   if (action === 'notification-order') { try { const { order } = await api(`/api/orders/${encodeURIComponent(button.dataset.id)}`); state.orders = [order, ...state.orders.filter(row => row.id !== order.id)]; state.modal = { type: 'order', id: order.id }; renderModal(); } catch (error) { toast(error.message); } return; }
   if (action === 'category') { state.selectedCategory = button.dataset.id; return setView('categories'); }
-  if (action === 'product') { const product=state.products.find(row=>row.id===button.dataset.id);state.modal={type:'product',id:button.dataset.id,variantId:defaultVariant(product)?.id||null};return renderModal(); }
+  if (action === 'product') return openProduct(button.dataset.id);
+  if (action === 'product-back') return leaveProduct();
+  if (action === 'reviews') { $('#product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  if (action === 'loose-preset') {
+    const product = state.products.find(row => row.id === button.dataset.id);
+    if (!product) return;
+    state.looseSelections[product.id] = { ...(state.looseSelections[product.id] || {}), mode: 'preset', variantId: button.dataset.variantId };
+    state.productOrderCounts[product.id] = 1; return render();
+  }
+  if (action === 'loose-custom') {
+    const product = state.products.find(row => row.id === button.dataset.id);
+    if (!product) return;
+    state.looseSelections[product.id] = { ...(state.looseSelections[product.id] || {}), mode: 'custom', grams: state.looseSelections[product.id]?.mode === 'custom' ? state.looseSelections[product.id].grams : 750 };
+    state.productOrderCounts[product.id] = 1; render(); $('#custom-weight')?.focus(); return;
+  }
+  if (action === 'product-order-step') {
+    const id = button.dataset.id, current = Number(state.productOrderCounts[id] || 1);
+    state.productOrderCounts[id] = Math.max(1, Math.min(10, current + Number(button.dataset.delta || 0))); return render();
+  }
+  if (action === 'add-packaged') {
+    const product = state.products.find(row => row.id === button.dataset.id);
+    if (!product || product.saleType === 'loose') return;
+    return changeQuantity(product.id, Number(state.productOrderCounts[product.id] || 1));
+  }
+  if (action === 'add-loose') {
+    const product = state.products.find(row => row.id === button.dataset.id);
+    const selection = state.looseSelections[button.dataset.id];
+    if (!product || product.saleType !== 'loose' || !selection) return;
+    const variant = usableVariants(product).find(row => row.id === selection.variantId);
+    const grams = selection.mode === 'custom' ? Number(selection.grams) : Number(variant?.quantityBase || 0);
+    if (!Number.isSafeInteger(grams) || grams < 50 || grams > Math.min(100000, Number(product.stock || 0))) {
+      const error = $('#custom-weight-error'); if (error) error.textContent = 'Enter a whole weight from 50 g up to the available stock.';
+      return;
+    }
+    const variantId = selection.mode === 'custom' ? `custom-${grams}` : variant?.id;
+    if (!variantId) return toast('Choose an available weight first.');
+    if (selection.mode === 'custom') selection.grams = grams;
+    return changeQuantity(product.id, Number(state.productOrderCounts[product.id] || 1), variantId);
+  }
   if (action === 'product-image') {
     const product = state.products.find(row => row.id === button.dataset.id), source = button.dataset.imageSrc;
     if (state.modal?.type === 'product' && state.modal.id === button.dataset.id && product && distinctProductImageSources(product).includes(source)) {
@@ -760,7 +933,7 @@ document.addEventListener('click', async event => {
   if (action === 'remove') { const variantId=button.dataset.variantId||null;return changeQuantity(button.dataset.id,-productQuantity(button.dataset.id,variantId),variantId); }
   if (action === 'clear-cart') { try { state.cart = await api('/api/cart', { method: 'DELETE' }); state.activeCoupon = null; render(); toast('Cart cleared'); } catch (error) { toast(error.message); } return; }
   if (action === 'remove-coupon') { try { state.cart = await api('/api/coupons', { method: 'DELETE' }); state.activeCoupon = state.cart.activeCoupon; render(); toast('Coupon cleared'); } catch (error) { toast(error.message); } return; }
-  if (action === 'apply-coupon') { try { const result = await post('/api/coupons/apply', { code: button.dataset.code }); state.cart = result.cart; state.activeCoupon = result.cart.activeCoupon || result.coupon; render(); toast('Coupon applied'); } catch (error) { toast(error.message); } return; }
+  if (action === 'apply-coupon') { try { const result = await post('/api/coupons/apply', { code: button.dataset.code }); state.cart = result.cart; state.activeCoupon = result.cart.activeCoupon || result.coupon; if (state.view === 'offers') setView('cart'); else render(); toast('Coupon applied'); } catch (error) { toast(error.message); } return; }
   if (action === 'checkout') { if (!state.user) { state.returnView = 'checkout'; state.modal = { type: 'auth', step: 'phone' }; renderModal(); return; } state.view = 'checkout'; try { await refreshDeliveryAreas(); } catch (error) { toast(`Delivery areas could not be refreshed: ${error.message}`); } if (!state.addresses.length) { render(); openAddress('form'); return; } return render(); }
   if (action === 'place-order') return placeOrder();
   if (action === 'address-picker') return openAddress('list');
@@ -774,12 +947,6 @@ document.addEventListener('click', async event => {
   if (action === 'logout') { try { await import('/push-client.js').then(push=>push.deactivateWebPush('customer')); } catch {} await post('/api/auth/logout', {}); state.user = null; state.addresses = []; state.activeAddress = null; state.orders = []; state.notifications = []; state.notificationUnread = 0; state.cart = null; state.wishlist = []; state.coupons = []; state.activeCoupon = null; state.referralData = null; state.activeOrder = null; state.checkoutAddressId = null; state.addressNotice = null; state.rewardCheckout = null; state.rewardQuote = null; state.selectedDeliveryAreaId = null; state.view = 'home'; await bootstrap(); toast('Signed out'); return; }
   if (action === 'open-order') return openOrderDetails(button.dataset.id);
   if (action === 'cancel-order') return cancelCustomerOrder(button.dataset.id);
-  if (action === 'wallet') {
-    const offers = state.coupons.length ? state.coupons.map(item => `${escapeHtml(item.code)} · ${escapeHtml(item.label || 'Offer')}`).join('\n') : 'No active coupons are configured.';
-    const paymentCopy = state.mode === 'production' ? 'Cash on delivery is available. Online payment is not configured.' : 'Cash on delivery and simulated UPI are available in this local environment.';
-    state.modal = { type: 'info', title: 'Payments & coupons', message: `${paymentCopy}\n\n${offers}\n\nWallet balances and payment services are not connected.` };
-    return renderModal();
-  }
   if (action === 'support') { state.modal = { type: 'info', title: 'Help & support', message: 'Support contact details have not been configured. Orders, addresses and cart updates are handled by this application.' }; return renderModal(); }
 });
 
@@ -792,6 +959,21 @@ document.addEventListener('change', async event => {
     render();
   }
   if (event.target.id === 'reward-address-select') { state.checkoutAddressId = event.target.value; try { state.rewardQuote = await api('/api/rewards/' + encodeURIComponent(state.rewardCheckout) + '/quote?addressId=' + encodeURIComponent(state.checkoutAddressId)); } catch (error) { state.rewardQuote = null; toast(error.message); } render(); }
+});
+
+document.addEventListener('input', event => {
+  if (event.target.id !== 'custom-weight') return;
+  const product = state.products.find(row => row.id === state.selectedProductId);
+  if (!product || !state.looseSelections[product.id]) return;
+  const grams = Number(event.target.value), valid = Number.isSafeInteger(grams) && grams >= 50 && grams <= Math.min(100000, Number(product.stock || 0));
+  state.looseSelections[product.id].grams = Number.isFinite(grams) ? grams : 0;
+  const total = valid ? Math.round(Number(product.price) * grams) / 1000 : 0;
+  const count = Number(state.productOrderCounts[product.id] || 1);
+  const summary = $('[data-role="custom-price"]'); if (summary) summary.textContent = valid ? money2(total) : '₹0.00';
+  const formula = $('[data-role="custom-formula"]'); if (formula) formula.textContent = `(${money(product.price)}/kg × ${valid ? (grams / 1000).toFixed(2) : '0.00'} kg)`;
+  const buttonTotal = $('[data-role="loose-total"]'); if (buttonTotal) buttonTotal.textContent = valid ? money2(total * count) : '₹0.00';
+  const error = $('#custom-weight-error'); if (error) error.textContent = event.target.value && !valid ? 'Enter a whole weight from 50 g up to the available stock.' : '';
+  const add = $('[data-action="add-loose"]'); if (add) add.disabled = !valid;
 });
 
 function updateNotificationPushStatus() {
@@ -874,6 +1056,12 @@ $('#global-search').addEventListener('input', event => {
 });
 $('#global-search').addEventListener('keydown', event => { if (event.key === 'Escape') { searchSequence++; clearTimeout(searchTimer); event.target.value = ''; state.searchQuery = ''; state.searchProducts = null; setView('home'); } });
 window.addEventListener('hashchange',()=>{handleNotificationHash(false).catch(()=>{});});
+window.addEventListener('popstate', event => {
+  const id = new URLSearchParams(location.search).get('product');
+  if (id && state.products.some(row => row.id === id)) { state.selectedProductId = id; state.view = 'product'; }
+  else if (state.view === 'product') { state.selectedProductId = null; state.view = event.state?.view || state.previousProductView || 'home'; }
+  render();
+});
 document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !state.modal) { event.preventDefault(); $('#global-search').focus(); } if (!state.modal) return; if (event.key === 'Escape') { event.preventDefault(); state.modal = null; renderModal(); return; } if (event.key === 'Tab') { const dialog = $('#overlay-root .dialog'); const focusable = [...(dialog?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]') || [])].filter(el => el.getClientRects().length); if (!focusable.length) { event.preventDefault(); dialog?.focus(); return; } const first = focusable[0], last = focusable[focusable.length - 1]; if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } });
 
 bootstrap().catch(showStoreLoadError);

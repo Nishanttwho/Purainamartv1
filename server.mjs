@@ -53,9 +53,10 @@ let categories = [
   { id: 'snacks', name: 'Snacks', icon: '🍿', color: '#fff0db', image: '/assets/customer/zepto-home/categories/snacks.webp' },
   { id: 'beverages', name: 'Drinks', icon: '🥤', color: '#fbe3ed', image: '/assets/customer/zepto-home/categories/beverages.webp' },
   { id: 'pantry', name: 'Staples', icon: '🍚', color: '#f8edcf', image: '/assets/customer/zepto-home/categories/staples.webp' },
+  { id: 'bakery', name: 'Bakery', icon: '🍞', color: '#f8e8d8', image: '/assets/customer/zepto-home/products/p115-whole-wheat-bread.jpg' },
   { id: 'beauty', name: 'Beauty', icon: '🧴', color: '#f1e4f7', image: '/assets/customer/zepto-home/categories/beauty.webp' },
-  { id: 'home', name: 'Home care', icon: '🧽', color: '#e4f4f0' },
-  { id: 'baby', name: 'Baby care', icon: '🧸', color: '#fce8e0' }
+  { id: 'home', name: 'Home care', icon: '🧽', color: '#e4f4f0', image: '/assets/customer/zepto-home/products/p119-dishwash-liquid.jpeg' },
+  { id: 'baby', name: 'Baby care', icon: '🧸', color: '#fce8e0', image: '/assets/customer/zepto-home/products/p121-baby-wipes.jpeg' }
 ];
 
 let products = [
@@ -86,6 +87,7 @@ let products = [
   image: ({
     p101: '/assets/customer/zepto-home/products/p101-avocado.jpeg',
     p102: '/assets/customer/zepto-home/products/p102-banana-robusta.jpeg',
+      p103: '/assets/customer/puraina/strawberry-pack.png',
     p104: '/assets/customer/zepto-home/products/p104-spinach.jpeg',
     p105: '/assets/customer/zepto-home/products/p105-farm-fresh-milk.jpeg',
     p106: '/assets/customer/zepto-home/products/p106-farm-eggs.jpg',
@@ -106,11 +108,21 @@ let products = [
     p121: '/assets/customer/zepto-home/products/p121-baby-wipes.jpeg',
     p122: '/assets/customer/zepto-home/products/p122-baby-lotion.jpeg'
   })[p.id] || null,
-  description: `${p.name} delivered fresh to your door. Demo listing for local browsing.`, stock: 20, isActive: true, rank: index
+  description: `${p.name} delivered fresh to your door. Demo listing for local browsing.`,
+  ...(p.id === 'p103' ? { rating: 4.6, reviewCount: 1200 } : {}),
+  stock: 20, isActive: true, rank: index
 }));
 
+// Development catalogue examples for the loose-weight checkout flow. Prices are
+// validated again from these server-owned product records when cart lines change.
+const looseProducts = [
+  { id: 'p123', name: 'Basmati Rice (Loose)', detail: 'Loose · sold by weight', category: 'pantry', price: 62, mrp: null, emoji: '🍚', badge: 'Loose', color: '#fff0dc', description: 'Premium quality basmati rice, measured fresh for your order.', saleType: 'loose', measurementUnit: 'g', stock: 10000, variants: [{ id: 'v-p123-250', label: '250 g', quantityBase: 250, unit: 'g', price: 15.5, mrp: null, stock: 10000, isActive: true }, { id: 'v-p123-500', label: '500 g', quantityBase: 500, unit: 'g', price: 31, mrp: null, stock: 10000, isActive: true }, { id: 'v-p123-1000', label: '1 kg', quantityBase: 1000, unit: 'g', price: 62, mrp: null, stock: 10000, isActive: true }] },
+  { id: 'p124', name: 'Wheat Flour (Loose)', detail: 'Loose · sold by weight', category: 'pantry', price: 40, mrp: null, emoji: '🌾', badge: 'Loose', color: '#fff0dc', description: 'Freshly milled wheat flour, measured fresh for your order.', saleType: 'loose', measurementUnit: 'g', stock: 10000, variants: [{ id: 'v-p124-250', label: '250 g', quantityBase: 250, unit: 'g', price: 10, mrp: null, stock: 10000, isActive: true }, { id: 'v-p124-500', label: '500 g', quantityBase: 500, unit: 'g', price: 20, mrp: null, stock: 10000, isActive: true }, { id: 'v-p124-1000', label: '1 kg', quantityBase: 1000, unit: 'g', price: 40, mrp: null, stock: 10000, isActive: true }] },
+  { id: 'p125', name: 'Toor Dal (Loose)', detail: 'Loose · sold by weight', category: 'pantry', price: 120, mrp: null, emoji: '🫘', badge: 'Loose', color: '#fff0dc', description: 'Everyday toor dal, measured fresh for your order.', saleType: 'loose', measurementUnit: 'g', stock: 10000, variants: [{ id: 'v-p125-250', label: '250 g', quantityBase: 250, unit: 'g', price: 30, mrp: null, stock: 10000, isActive: true }, { id: 'v-p125-500', label: '500 g', quantityBase: 500, unit: 'g', price: 60, mrp: null, stock: 10000, isActive: true }, { id: 'v-p125-1000', label: '1 kg', quantityBase: 1000, unit: 'g', price: 120, mrp: null, stock: 10000, isActive: true }] }
+];
+
 function freshStore() {
-  return { users: [], sessions: {}, challenges: {}, adminSessions: {}, adminChallenges: {}, adminAuditLog: [], categories: isProduction ? [] : categories, products: isProduction ? [] : products, carts: { guest: {} }, variantCarts: { guest: {} }, wishlists: { guest: [] }, addresses: {}, deliveryAreas: [], selectedDeliveryAreas: {}, selectedDeliveryAddresses: {}, dispatchSettings: { designatedRiderId: isProduction ? null : 'demo-rider' }, homepageBanners: defaultHomepageBanners(), homepageHeroFruitImage: null, orders: [], notifications: {}, notificationWelcome: {}, coupons: isProduction ? {} : { DEMO50: { code: 'DEMO50', label: '₹50 off your demo order', minimum: 299, discountType: 'fixed', discount: 50, isActive: true } }, referralCampaign: referralCampaignDefaults(), referrals: [], rewards: [], referralEvents: [] };
+  return { users: [], sessions: {}, challenges: {}, adminSessions: {}, adminChallenges: {}, adminAuditLog: [], categories: isProduction ? [] : categories, products: isProduction ? [] : products, carts: { guest: {} }, variantCarts: { guest: {} }, wishlists: { guest: [] }, addresses: {}, deliveryAreas: [], selectedDeliveryAreas: {}, selectedDeliveryAddresses: {}, dispatchSettings: { designatedRiderId: isProduction ? null : 'demo-rider' }, homepageBanners: defaultHomepageBanners(), homepageHeroFruitImage: null, orders: [], notifications: {}, notificationWelcome: {}, coupons: isProduction ? {} : { DEMO50: { code: 'DEMO50', label: '₹50 off your demo order', minimum: 299, discountType: 'fixed', discount: 50, isActive: true }, WELCOME50: { code: 'WELCOME50', label: '₹50 off on your first order', minimum: 299, discountType: 'fixed', discount: 50, isActive: true, maxRedemptionsPerCustomer: 1 } }, referralCampaign: referralCampaignDefaults(), referrals: [], rewards: [], referralEvents: [] };
 }
 
 function notificationTemplateDefaults() {
@@ -146,9 +158,50 @@ if (!Array.isArray(store.deliveryAreas)) { store.deliveryAreas = []; storeNeedsM
 for (const area of store.deliveryAreas) if (area.isDemoFallback && area.isActive !== false) { area.isActive = false; storeNeedsMigration = true; }
 if (!Array.isArray(store.products)) { store.products = products; storeNeedsMigration = true; }
 if (!Array.isArray(store.categories)) { store.categories = categories; storeNeedsMigration = true; }
+store.coupons ||= {};
+if (!isProduction && !store.coupons.WELCOME50) { store.coupons.WELCOME50 = { code: 'WELCOME50', label: '₹50 off on your first order', minimum: 299, discountType: 'fixed', discount: 50, isActive: true, maxRedemptionsPerCustomer: 1 }; storeNeedsMigration = true; }
 for (const user of store.users) { if (!user.referralCode) { user.referralCode = makeReferralCode(); storeNeedsMigration = true; } }
 products = store.products;
 categories = store.categories;
+if (!isProduction) {
+  if (!categories.some(row => row.id === 'bakery')) { categories.push(structuredClone(categories.find(row => row.id === 'pantry') ? { id: 'bakery', name: 'Bakery', icon: '🍞', color: '#f8e8d8', image: '/assets/customer/zepto-home/products/p115-whole-wheat-bread.jpg', isActive: true } : {})); storeNeedsMigration = true; }
+  const bread = products.find(row => row.id === 'p115');
+  if (bread && bread.category === 'pantry') { bread.category = 'bakery'; storeNeedsMigration = true; }
+  for (const [id, image] of [['home','/assets/customer/zepto-home/products/p119-dishwash-liquid.jpeg'],['baby','/assets/customer/zepto-home/products/p121-baby-wipes.jpeg']]) {
+    const category = categories.find(row => row.id === id);
+    if (category && !category.image) { category.image = image; storeNeedsMigration = true; }
+  }
+  const strawberry = products.find(row => row.id === 'p103');
+  if (strawberry && !strawberry.image) { strawberry.image = '/assets/customer/puraina/strawberry-pack.png'; storeNeedsMigration = true; }
+  if (strawberry && !strawberry.rating) { strawberry.rating = 4.6; strawberry.reviewCount = 1200; storeNeedsMigration = true; }
+  for (const product of products.filter(row => row.saleType === 'loose' && !row.rating)) { product.rating = 4.5; product.reviewCount = 2100; storeNeedsMigration = true; }
+  for (const product of looseProducts) if (!products.some(row => row.id === product.id)) {
+    products.push(structuredClone(product)); storeNeedsMigration = true;
+  }
+  const looseRice = products.find(row => row.id === 'p123');
+  if (looseRice && looseRice.image !== '/assets/customer/puraina/basmati-rice-loose.png') { looseRice.image = '/assets/customer/puraina/basmati-rice-loose.png'; storeNeedsMigration = true; }
+  const looseFlour = products.find(row => row.id === 'p124');
+  if (looseFlour && looseFlour.image !== '/assets/customer/puraina/wheat-flour-loose.png') { looseFlour.image = '/assets/customer/puraina/wheat-flour-loose.png'; storeNeedsMigration = true; }
+  const looseDal = products.find(row => row.id === 'p125');
+  if (looseDal && looseDal.image !== '/assets/customer/puraina/toor-dal-loose.png') { looseDal.image = '/assets/customer/puraina/toor-dal-loose.png'; storeNeedsMigration = true; }
+}
+const optimizedProductImageAssets = {
+  p103: { source: '/assets/customer/puraina/strawberry-pack.png', thumbnail: '/assets/customer/puraina/p103-strawberry-card-v1.jpg', detail: '/assets/customer/puraina/p103-strawberry-detail-v1.jpg' },
+  p123: { source: '/assets/customer/puraina/basmati-rice-loose.png', thumbnail: '/assets/customer/puraina/p123-basmati-rice-loose-card-v1.jpg', detail: '/assets/customer/puraina/p123-basmati-rice-loose-detail-v1.jpg' },
+  p124: { source: '/assets/customer/puraina/wheat-flour-loose.png', thumbnail: '/assets/customer/puraina/p124-wheat-flour-loose-card-v1.jpg', detail: '/assets/customer/puraina/p124-wheat-flour-loose-detail-v1.jpg' },
+  p125: { source: '/assets/customer/puraina/toor-dal-loose.png', thumbnail: '/assets/customer/puraina/p125-toor-dal-loose-card-v1.jpg', detail: '/assets/customer/puraina/p125-toor-dal-loose-detail-v1.jpg' }
+};
+for (const product of products) {
+  const optimized = optimizedProductImageAssets[product.id];
+  if (!optimized || ![optimized.source, optimized.detail].includes(product.image)) continue;
+  if (product.image !== optimized.detail) { product.image = optimized.detail; storeNeedsMigration = true; }
+  if (product.thumbnail !== optimized.thumbnail) { product.thumbnail = optimized.thumbnail; storeNeedsMigration = true; }
+  if (product.thumbnailSource !== optimized.detail) { product.thumbnailSource = optimized.detail; storeNeedsMigration = true; }
+  if (Array.isArray(product.images) && product.images.includes(optimized.source)) {
+    product.images = product.images.map(image => image === optimized.source ? optimized.detail : image);
+    storeNeedsMigration = true;
+  }
+}
 function productHasSellableStock(product) {
   if (!product || product.isActive === false) return false;
   if (Array.isArray(product.variants) && product.variants.length) return product.variants.some(variant => variant.isActive !== false && Number(variant.stock) > 0);
@@ -371,8 +424,10 @@ function cartSummary(req) {
     const product = products.find(p => p.id === productId && p.isActive !== false);
     if (!product || !product.variants?.length || !selections || typeof selections !== 'object') continue;
     for (const [variantId, quantity] of Object.entries(selections)) {
-      const variant = (product.variants || []).find(row => row.id === variantId);
       if (!Number.isInteger(quantity) || quantity < 1) continue;
+      const customMatch = product.saleType === 'loose' && product.measurementUnit === 'g' && /^custom-\d{1,6}$/.test(variantId) ? variantId.match(/^custom-(\d{1,6})$/) : null;
+      const customGrams = customMatch ? Number(customMatch[1]) : 0;
+      const variant = customMatch ? { id: variantId, label: `${customGrams} g`, quantityBase: customGrams, unit: 'g', price: fromMoneyCents(Math.round((toMoneyCents(product.price) || 0) * customGrams / 1000)), mrp: null, stock: Number(product.stock || 0), isActive: customGrams > 0 } : (product.variants || []).find(row => row.id === variantId);
       if (!variant) { lines.push({ ...product, saleType: product.saleType, variantId, variantLabel: 'Unavailable quantity option', quantity, price: 0, mrp: null, lineTotal: 0, lineDiscount: 0, isAvailable: false, availabilityError: 'This quantity option was removed. Remove it from the cart to continue.' }); continue; }
       const consumed = product.saleType === 'packed' ? quantity : variant.quantityBase * quantity;
       const priceCents = toMoneyCents(variant.price) ?? 0;
@@ -386,19 +441,22 @@ function cartSummary(req) {
   const subtotalCents = lines.reduce((sum, row) => sum + (toMoneyCents(row.lineTotal) ?? 0), 0);
   const subtotal = fromMoneyCents(subtotalCents);
   const itemSavings = fromMoneyCents(lines.reduce((sum, row) => sum + (toMoneyCents(row.lineDiscount) ?? 0), 0));
+  const baseDeliveryQuote = quoteDelivery(req, subtotal);
   const candidateCoupon = store.coupons[store.appliedCoupon?.[cartOwner(req)]] || null;
-  const activeCoupon = couponEligible(candidateCoupon, cartOwner(req), subtotal) ? candidateCoupon : null;
+  let activeCoupon = couponEligible(candidateCoupon, cartOwner(req), subtotal) ? candidateCoupon : null;
+  if (activeCoupon?.discountType === 'free_delivery' && (!baseDeliveryQuote.available || !baseDeliveryQuote.minimumOrderMet || baseDeliveryQuote.free)) activeCoupon = null;
   const rawDiscountCents = activeCoupon?.discountType === 'percentage'
     ? Math.round(subtotalCents * Number(activeCoupon.discount || 0) / 100)
-    : (toMoneyCents(activeCoupon?.discount || 0) ?? 0);
+    : activeCoupon?.discountType === 'free_delivery' ? 0 : (toMoneyCents(activeCoupon?.discount || 0) ?? 0);
   const maxDiscountCents = activeCoupon?.maximumDiscount == null ? null : toMoneyCents(activeCoupon.maximumDiscount);
   const cappedDiscountCents = maxDiscountCents == null ? rawDiscountCents : Math.min(rawDiscountCents, maxDiscountCents);
   const discount = fromMoneyCents(Math.min(cappedDiscountCents, subtotalCents));
-  const deliveryQuote = quoteDelivery(req, subtotal);
-  const delivery = deliveryQuote.delivery;
+  const deliveryQuote = baseDeliveryQuote;
+  const freeDeliveryCouponApplied = activeCoupon?.discountType === 'free_delivery';
+  const delivery = freeDeliveryCouponApplied ? 0 : deliveryQuote.delivery;
   const platform = subtotal === 0 ? 0 : 2;
   const finalDiscount = Math.min(discount, subtotal);
-  const freeDeliverySavings = deliveryQuote.free ? Number(deliveryQuote.area?.deliveryCharge || 0) : 0;
+  const freeDeliverySavings = deliveryQuote.free || freeDeliveryCouponApplied ? Number(deliveryQuote.area?.deliveryCharge || 0) : 0;
   const couponOffers = Object.values(store.coupons || {}).filter(coupon => couponEligible(coupon, cartOwner(req), subtotal, { allowBelowMinimum: true })).map(coupon => ({
     code: coupon.code,
     label: coupon.label,
@@ -406,15 +464,16 @@ function cartSummary(req) {
     discountType: coupon.discountType,
     discount: Number(coupon.discount || 0),
     maximumDiscount: coupon.maximumDiscount == null ? null : Number(coupon.maximumDiscount),
-    eligible: couponEligible(coupon, cartOwner(req), subtotal),
-    remaining: Math.max(0, Number(coupon.minimum || 0) - subtotal)
+    eligible: couponEligible(coupon, cartOwner(req), subtotal) && (coupon.discountType !== 'free_delivery' || (deliveryQuote.available && deliveryQuote.minimumOrderMet && !deliveryQuote.free)),
+    remaining: Math.max(0, Number(coupon.minimum || 0) - subtotal, coupon.discountType === 'free_delivery' ? Math.max(0, Number(deliveryQuote.minimumOrder || 0) - subtotal) : 0),
+    ineligibleReason: coupon.discountType === 'free_delivery' && deliveryQuote.free ? 'Free delivery is already included for this order.' : coupon.discountType === 'free_delivery' && !deliveryQuote.available ? 'Choose a delivery address where delivery is available.' : coupon.discountType === 'free_delivery' && !deliveryQuote.minimumOrderMet ? `Add ₹${Math.max(0, Number(deliveryQuote.minimumOrder || 0) - subtotal).toLocaleString('en-IN')} more to meet this area’s minimum order.` : Number(coupon.minimum || 0) > subtotal ? `Add ₹${(Number(coupon.minimum || 0) - subtotal).toLocaleString('en-IN')} more to qualify.` : null
   }));
-  const freeDeliveryProgressPercent = deliveryQuote.available && deliveryQuote.freeDeliveryThreshold != null
+  const freeDeliveryProgressPercent = freeDeliveryCouponApplied ? 100 : deliveryQuote.available && deliveryQuote.freeDeliveryThreshold != null
     ? deliveryQuote.freeDeliveryThreshold > 0 ? Math.min(100, Math.max(0, Math.round(subtotal / deliveryQuote.freeDeliveryThreshold * 100))) : 100
     : null;
   const totalCents = Math.max(0, subtotalCents - (toMoneyCents(finalDiscount) ?? 0) + (toMoneyCents(delivery) ?? 0) + (toMoneyCents(platform) ?? 0));
   const totalSavings = fromMoneyCents((toMoneyCents(itemSavings) ?? 0) + (toMoneyCents(finalDiscount) ?? 0) + (toMoneyCents(freeDeliverySavings) ?? 0));
-  return { items: lines, subtotal, itemSavings, discount: finalDiscount, delivery, freeDeliveryUnlocked: deliveryQuote.free, freeDeliveryRemaining: deliveryQuote.available && deliveryQuote.freeDeliveryThreshold != null ? Math.max(0, deliveryQuote.freeDeliveryThreshold - subtotal) : null, freeDeliveryProgressPercent, freeDeliverySavings, totalSavings, platform, total: fromMoneyCents(totalCents), count: lines.reduce((sum, row) => sum + row.quantity, 0), activeCoupon, couponOffers, deliveryArea: deliveryQuote.area, deliveryAvailable: deliveryQuote.available, minimumOrder: deliveryQuote.minimumOrder, minimumOrderMet: deliveryQuote.minimumOrderMet, freeDeliveryThreshold: deliveryQuote.freeDeliveryThreshold, deliveryEstimate: deliveryQuote.estimate, deliveryMessage: deliveryQuote.message };
+  return { items: lines, subtotal, itemSavings, discount: finalDiscount, delivery, freeDeliveryUnlocked: deliveryQuote.free || freeDeliveryCouponApplied, freeDeliveryRemaining: freeDeliveryCouponApplied ? 0 : deliveryQuote.available && deliveryQuote.freeDeliveryThreshold != null ? Math.max(0, deliveryQuote.freeDeliveryThreshold - subtotal) : null, freeDeliveryProgressPercent, freeDeliverySavings, freeDeliveryCouponApplied, totalSavings, platform, total: fromMoneyCents(totalCents), count: lines.reduce((sum, row) => sum + row.quantity, 0), activeCoupon, couponOffers, deliveryArea: deliveryQuote.area, deliveryAvailable: deliveryQuote.available, minimumOrder: deliveryQuote.minimumOrder, minimumOrderMet: deliveryQuote.minimumOrderMet, freeDeliveryThreshold: deliveryQuote.freeDeliveryThreshold, deliveryEstimate: deliveryQuote.estimate, deliveryMessage: deliveryQuote.message };
 }
 function wishlistFor(req) {
   const key = cartOwner(req);
@@ -457,7 +516,8 @@ function clearIneligibleCoupon(req) {
   const coupon = store.coupons[code];
   if (!coupon) return;
   const subtotal = cartSummary(req).subtotal;
-  if (!couponEligible(coupon, owner, subtotal)) delete store.appliedCoupon[owner];
+  const quote = quoteDelivery(req, subtotal);
+  if (!couponEligible(coupon, owner, subtotal) || coupon.discountType === 'free_delivery' && (!quote.available || !quote.minimumOrderMet || quote.free)) delete store.appliedCoupon[owner];
 }
 function addressesFor(user) {
   return store.addresses[user.id] || [];
@@ -653,7 +713,7 @@ function addNotification(userId, options) {
   return createNotificationEvent('customer', userId, options);
 }
 function createCustomerCouponNotification(admin, user, coupon) {
-  const discount = coupon.discountType === 'percentage' ? `${coupon.discount}% off${coupon.maximumDiscount ? ` up to ₹${coupon.maximumDiscount}` : ''}` : `₹${coupon.discount} off`;
+  const discount = coupon.discountType === 'free_delivery' ? 'free delivery' : coupon.discountType === 'percentage' ? `${coupon.discount}% off${coupon.maximumDiscount ? ` up to ₹${coupon.maximumDiscount}` : ''}` : `₹${coupon.discount} off`;
   const expiry = coupon.expiresAt ? ` Expires ${new Date(coupon.expiresAt).toLocaleDateString('en-IN')}.` : '';
   const notification = addNotification(user.id, { type:'offer',eventType:'announcement',category:'announcements',eventId:`customer-coupon:${coupon.code}:notify`,title:`Your coupon ${coupon.code} is ready`,message:`${coupon.label || coupon.code}: ${discount} on orders over ₹${coupon.minimum || 0}.${expiry}`,destination:'/#offers',inApp:true,forceInApp:true,push:true });
   recordAdminAudit(admin, 'customer.coupon_notified', user.id, { code:coupon.code, notificationId:notification?.id || null });
@@ -1120,7 +1180,9 @@ async function handleAdminApi(req, res, url) {
     const body = await readBody(req); const code = String(body.code || '').trim().toUpperCase();
     const discount = Number(body.discount), minimum = Number(body.minimum), maximumDiscount = body.maximumDiscount === '' || body.maximumDiscount === undefined ? null : Number(body.maximumDiscount);
     const limits = parseCouponLimits(body);
-    if (!/^[A-Z0-9_-]{3,32}$/.test(code) || store.coupons[code] || !['fixed', 'percentage'].includes(body.discountType) || !Number.isFinite(discount) || discount <= 0 || (body.discountType === 'percentage' && discount > 100) || !Number.isFinite(minimum) || minimum < 0 || (maximumDiscount !== null && (!Number.isFinite(maximumDiscount) || maximumDiscount <= 0)) || !limits || (body.isActive !== undefined && typeof body.isActive !== 'boolean')) return send(res, 400, { error: 'Enter a unique code and valid discount, limits, expiry, minimum, and optional cap.' });
+    const supportedType = ['fixed', 'percentage', 'free_delivery'].includes(body.discountType);
+    const validDiscount = body.discountType === 'free_delivery' ? Number.isFinite(discount) && discount === 0 && maximumDiscount === null : Number.isFinite(discount) && discount > 0;
+    if (!/^[A-Z0-9_-]{3,32}$/.test(code) || store.coupons[code] || !supportedType || !validDiscount || (body.discountType === 'percentage' && discount > 100) || !Number.isFinite(minimum) || minimum < 0 || (maximumDiscount !== null && (!Number.isFinite(maximumDiscount) || maximumDiscount <= 0)) || !limits || (body.isActive !== undefined && typeof body.isActive !== 'boolean')) return send(res, 400, { error: 'Enter a unique code and valid discount, limits, expiry, minimum, and optional cap.' });
     const coupon = { code, label: String(body.label || `${code} offer`).trim().slice(0, 80), discountType: body.discountType, discount, minimum, maximumDiscount, isActive: body.isActive === undefined ? true : body.isActive === true, createdAt: new Date().toISOString(), ...limits };
     store.coupons[code] = coupon; persist(); return send(res, 201, { coupon });
   }
@@ -1135,13 +1197,14 @@ async function handleAdminApi(req, res, url) {
     if (body.isActive !== undefined) { if (typeof body.isActive !== 'boolean') return send(res, 400, { error: 'Coupon status must be enabled or disabled.' }); next.isActive = body.isActive; }
     if (body.label !== undefined) next.label = String(body.label).trim().slice(0, 80);
     if (body.minimum !== undefined) { next.minimum = Number(body.minimum); if (!Number.isFinite(next.minimum) || next.minimum < 0) return send(res, 400, { error: 'Minimum order value must be non-negative.' }); }
-    if (body.discount !== undefined) { next.discount = Number(body.discount); if (!Number.isFinite(next.discount) || next.discount <= 0) return send(res, 400, { error: 'Enter a valid discount.' }); }
-    if (body.discountType !== undefined) { if (!['fixed', 'percentage'].includes(body.discountType)) return send(res, 400, { error: 'Discount type must be fixed or percentage.' }); next.discountType = body.discountType; }
+    if (body.discount !== undefined) { next.discount = Number(body.discount); if (!Number.isFinite(next.discount) || next.discount < 0 || (next.discountType !== 'free_delivery' && next.discount <= 0)) return send(res, 400, { error: 'Enter a valid discount.' }); }
+    if (body.discountType !== undefined) { if (!['fixed', 'percentage', 'free_delivery'].includes(body.discountType)) return send(res, 400, { error: 'Discount type must be fixed, percentage, or free delivery.' }); next.discountType = body.discountType; if (body.discountType === 'free_delivery') { next.discount = 0; next.maximumDiscount = null; } }
     if (body.maximumDiscount !== undefined) { next.maximumDiscount = body.maximumDiscount === null || body.maximumDiscount === '' ? null : Number(body.maximumDiscount); if (next.maximumDiscount !== null && (!Number.isFinite(next.maximumDiscount) || next.maximumDiscount <= 0)) return send(res, 400, { error: 'Enter a valid discount cap.' }); }
     const limits = parseCouponLimits(body);
     if (!limits) return send(res, 400, { error: 'Enter valid expiry and redemption limits.' });
     for (const key of ['expiresAt', 'maxRedemptions', 'maxRedemptionsPerCustomer']) if (Object.hasOwn(body, key)) next[key] = limits[key];
     if (next.discountType === 'percentage' && next.discount > 100) return send(res, 400, { error: 'Percentage discounts cannot exceed 100%.' });
+    if (next.discountType === 'free_delivery' && (next.discount !== 0 || next.maximumDiscount != null)) return send(res, 400, { error: 'Free-delivery coupons do not use a cash discount or cap.' });
     Object.assign(coupon, next);
     persist(); return send(res, 200, { coupon });
   }
@@ -2060,8 +2123,11 @@ async function handleRequest(req, res) {
       if (!Number.isInteger(change) || change === 0) return send(res, 400, { error: 'Choose a valid quantity change' });
       if (product.variants?.length) {
         if (!variantId) return send(res, 400, { error: 'Choose a quantity option first.' });
-        const variant = product.variants.find(row => row.id === variantId);
+        const customMatch = product.saleType === 'loose' && product.measurementUnit === 'g' && /^custom-\d{1,6}$/.test(String(variantId)) ? String(variantId).match(/^custom-(\d{1,6})$/) : null;
+        const customGrams = customMatch ? Number(customMatch[1]) : 0;
+        const variant = customMatch ? { id: variantId, label: `${customGrams} g`, quantityBase: customGrams, unit: 'g', price: fromMoneyCents(Math.round((toMoneyCents(product.price) || 0) * customGrams / 1000)), mrp: null, stock: Number(product.stock || 0), isActive: customGrams > 0 } : product.variants.find(row => row.id === variantId);
         if (!variant) return send(res, 404, { error: 'That quantity option is no longer available. Remove it from your cart.' });
+        if (customMatch && (customGrams < 50 || customGrams > 100000)) return send(res, 400, { error: 'Enter a custom weight between 50 g and 100,000 g.' });
         const cart = variantCartFor(req); cart[productId] ||= {};
         const currentQuantity = Number(cart[productId][variantId]) || 0;
         const next = Math.max(0, Math.min(10, currentQuantity + change));
@@ -2098,6 +2164,8 @@ async function handleRequest(req, res) {
       const cart = cartSummary(req);
       if (!couponEligible(coupon, cartOwner(req), cart.subtotal, { allowBelowMinimum: true })) return send(res, 400, { error: 'That coupon is not available' });
       if (cart.subtotal < Number(coupon.minimum || 0)) return send(res, 400, { error: `Add items worth ₹${Number(coupon.minimum || 0) - cart.subtotal} more to use this code` });
+      if (coupon.discountType === 'free_delivery' && (!cart.deliveryAvailable || cart.minimumOrderMet === false)) return send(res, 400, { error: 'Choose an eligible delivery area and meet its minimum order to use this offer.' });
+      if (coupon.discountType === 'free_delivery' && cart.freeDeliveryUnlocked) return send(res, 409, { error: 'Free delivery is already included for this order.' });
       store.appliedCoupon ||= {};
       store.appliedCoupon[cartOwner(req)] = coupon.code;
       persist();
@@ -2205,9 +2273,11 @@ async function handleRequest(req, res) {
       const requestedAreaId = body.deliveryAreaId == null || body.deliveryAreaId === '' ? address.deliveryAreaId : String(body.deliveryAreaId);
       const deliveryArea = findDeliveryArea(address, requestedAreaId);
       if (!deliveryArea || (body.deliveryAreaId && String(body.deliveryAreaId) !== address.deliveryAreaId)) return send(res, 409, { error: 'Delivery area is unavailable or does not match this address. Select a currently enabled area for this address.' });
-      const deliveryQuote = quoteDelivery(req, cart.subtotal, { address, areaId: deliveryArea.id });
-      if (!deliveryQuote.available) return send(res, 409, { error: 'Delivery area is unavailable. Select a currently enabled area for this address.' });
-      if (!deliveryQuote.minimumOrderMet) return send(res, 409, { error: `This area requires a minimum order of ₹${deliveryQuote.minimumOrder}. Add ₹${deliveryQuote.minimumOrder - cart.subtotal} more to continue.` });
+      const baseDeliveryQuote = quoteDelivery(req, cart.subtotal, { address, areaId: deliveryArea.id });
+      if (!baseDeliveryQuote.available) return send(res, 409, { error: 'Delivery area is unavailable. Select a currently enabled area for this address.' });
+      if (!baseDeliveryQuote.minimumOrderMet) return send(res, 409, { error: `This area requires a minimum order of ₹${baseDeliveryQuote.minimumOrder}. Add ₹${baseDeliveryQuote.minimumOrder - cart.subtotal} more to continue.` });
+      if (cart.activeCoupon?.discountType === 'free_delivery' && baseDeliveryQuote.free) return send(res, 409, { error: 'The delivery coupon is no longer needed because this area already includes free delivery. Remove it and try again.', code: 'COUPON_INELIGIBLE' });
+      const deliveryQuote = { ...baseDeliveryQuote, delivery: cart.delivery, free: cart.freeDeliveryUnlocked };
       const orderTotal = fromMoneyCents(Math.max(0, (toMoneyCents(cart.subtotal) ?? 0) - (toMoneyCents(cart.discount) ?? 0) + (toMoneyCents(deliveryQuote.delivery) ?? 0) + (toMoneyCents(cart.platform) ?? 0)));
       const createdAt = new Date().toISOString();
       const deliveryAreaSnapshot = { id: deliveryArea.id, name: deliveryArea.name, pinCodes: [...(deliveryArea.pinCodes || [])], deliveryCharge: deliveryQuote.delivery, standardDeliveryCharge: Number(deliveryArea.deliveryCharge || 0), minimumOrder: deliveryQuote.minimumOrder, freeDeliveryThreshold: deliveryQuote.freeDeliveryThreshold, etaMinMinutes: Number(deliveryArea.etaMinMinutes), etaMaxMinutes: Number(deliveryArea.etaMaxMinutes), isDemoFallback: Boolean(deliveryArea.isDemoFallback) };
@@ -2220,7 +2290,7 @@ async function handleRequest(req, res) {
       for (const item of cart.items) {
         const product = products.find(row => row.id === item.id);
         const consumed = item.saleType === 'packed' ? item.quantity : item.saleType === 'loose' ? item.totalBaseQuantity : item.quantity;
-        if (item.variantId) { const variant = product.variants.find(row => row.id === item.variantId); variant.stock -= consumed; }
+        if (item.variantId && !String(item.variantId).startsWith('custom-')) { const variant = product.variants.find(row => row.id === item.variantId); if (variant) variant.stock -= consumed; }
         product.stock -= consumed;
       }
       addNotification(user.id, { type: 'order',eventType:'order_received',eventId:`order:${order.id}:received`, title: 'Order confirmed', message: isProduction ? `Order ${order.displayId} was received. We’ll notify you as it is prepared.` : `Order ${order.displayId} is confirmed and ready for pickup.`, orderId: order.id,destination:'/#orders' });
@@ -2246,7 +2316,19 @@ async function handleRequest(req, res) {
       if (!url.pathname.startsWith('/api/') && !path.extname(requested)) { res.writeHead(302, { location: '/', 'cache-control': 'no-store' }); return res.end(); }
       return send(res, 404, { error: 'Not found' });
     }
-    res.writeHead(200, { 'content-type': mime(file), 'cache-control': 'no-cache' });
+    const stat = fs.statSync(file);
+    const etag = `W/"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`;
+    const lastModified = stat.mtime.toUTCString();
+    const isAsset = requested.startsWith('/assets/');
+    const isVersionedAsset = isAsset && /-v\d+\.(?:avif|webp|jpe?g|png)$/i.test(requested);
+    const cacheControl = isVersionedAsset ? 'public, max-age=31536000, immutable' : isAsset ? 'public, max-age=86400, stale-while-revalidate=604800' : 'no-cache';
+    const requestEtags = String(req.headers['if-none-match'] || '').split(',').map(value => value.trim()).filter(Boolean);
+    const notModifiedSince = Date.parse(req.headers['if-modified-since'] || '');
+    const matchesEtag = requestEtags.includes('*') || requestEtags.includes(etag);
+    const matchesDate = Number.isFinite(notModifiedSince) && Math.floor(stat.mtimeMs / 1000) * 1000 <= notModifiedSince;
+    const responseHeaders = { 'content-type': mime(file), 'content-length': stat.size, 'cache-control': cacheControl, etag, 'last-modified': lastModified };
+    if (matchesEtag || (!requestEtags.length && matchesDate)) { res.writeHead(304, responseHeaders); return res.end(); }
+    res.writeHead(200, responseHeaders);
     if (req.method === 'HEAD') return res.end();
     fs.createReadStream(file).pipe(res);
   } catch (error) {
