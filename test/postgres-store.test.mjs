@@ -13,8 +13,10 @@ test('PostgreSQL session IDs are hashed at rest and remain stable across snapsho
   assert.deepEqual(Object.keys(savedState.sessions), [expected]);
   assert.equal(initial.sessions[raw].userId, 'u1', 'database adapter does not mutate the live store');
 
-  const readClient = { query: async sql => sql.includes('store_snapshot') ? ({ rows: [{ state: { __initialized: true, users: [{ id: 'u1' }], sessions: savedState.sessions, riderSessions: {}, adminSessions: {}, categories: [], riders: [], deliveryAreas: [], products: [], orders: [], referrals: [], rewards: [], referralEvents: [], coupons: {}, addresses: {}, carts: {}, wishlists: {} } }] }) : sql.includes('homepageBanners') ? ({rows:savedSettings.homepageBanners!==undefined?[{data:savedSettings.homepageBanners}]:[]}) : sql.includes('homepageHeroFruitImage') ? ({rows:savedSettings.homepageHeroFruitImage!==undefined?[{data:savedSettings.homepageHeroFruitImage}]:[]}) : sql.includes('application_settings') ? ({rows:[]}) : sql.includes('cart_variant_items') ? ({rows:[{owner_id:'u1',product_id:'p1',variant_id:'v1',quantity:2}]}) : ({ rows: [] }) };
+  let readQueries = 0;
+  const readClient = { query: async sql => { readQueries++; assert.match(sql, /WITH base AS MATERIALIZED/); return { rows: [{ state: { __initialized: true, users: [{ id: 'u1' }], sessions: savedState.sessions, riderSessions: {}, adminSessions: {}, categories: [], riders: [], deliveryAreas: [], products: [], orders: [], referrals: [], rewards: [], referralEvents: [], coupons: {}, addresses: {}, carts: {}, wishlists: {} }, state_bytes: 512, related_bytes: 256, related: { devices: [], preferences: [], templates: [], events: [], outbox: [], campaigns: [], logs: [], riderNotifications: [], variantCartRows: [{owner_id:'u1',product_id:'p1',variant_id:'v1',quantity:2}], settings: savedSettings } }] }; } };
   const restored = await readPostgresStore(readClient);
+  assert.equal(readQueries, 1, 'the consistent store snapshot and related records use one PostgreSQL round trip');
   assert.deepEqual(Object.keys(restored.sessions), [`h:${expected}`]);
   assert.deepEqual(restored.variantCarts,{u1:{p1:{v1:2}}});
   assert.deepEqual(restored.homepageBanners,initial.homepageBanners,'promotional banner settings persist through the PostgreSQL settings table');
