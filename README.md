@@ -1,119 +1,91 @@
-# Zepto local recreation
+# PurainaMart
 
-Independent grocery shopping and delivery application built from observable package evidence. It does not use Zepto's proprietary source code, package assets, live services, or credentials. Development mode retains local fixture content; production starts with an empty store and requires explicit Admin configuration.
+Customer storefront, Admin operations and Rider delivery application using MongoDB as the only runtime data store. New orders use Cash on Delivery (COD). The server does not seed data, automatically import files or offer online payments.
 
-## Run
+## Local setup
 
-Requires Node.js 24.7 or later for the built-in Argon2id password hasher. From this directory run:
+Use Node.js 24.7 or newer within the Node 24 release line and npm. Supply your own non-production MongoDB replica set or sharded cluster; a standalone MongoDB server cannot execute checkout transactions. The URI must explicitly select the **purainamart** database. Startup pings MongoDB, verifies topology and installs the collection validators and indexes, so the database identity needs permissions for these operations as well as application reads and writes.
 
-```powershell
-npm start
-```
-
-Then open [http://127.0.0.1:4173](http://127.0.0.1:4173). The server binds to loopback only. Local development and the isolated JSON test harness use `data/store.json` by default. Set `DATABASE_URL` to use PostgreSQL. Production refuses to start without PostgreSQL; it never imports `data/store.json` automatically. Set `PORT` to choose another port.
-
-## Customer password sign-in and registration
-
-The Customer app's phone flow now accepts a mobile number, then lets an existing customer sign in with a password or a new customer register with a name and password. Passwords are salted Argon2id hashes; sessions are HttpOnly cookies with server-side expiry and logout revocation. Passwords must be 12–128 characters. There is no SMS/WhatsApp OTP provider, so phone ownership is not verified during registration. Existing passwordless accounts cannot be claimed through registration; use an already signed-in session to set a password, or sign in with an already linked Google identity. If neither is available, account recovery must wait for a real OTP provider or a support recovery process. There is deliberately no shared/default customer password.
-
-The old customer, Rider, and Admin fixed OTP flows are disabled outside the test harness. Tests can enable isolated OTP fixtures only with both `NODE_ENV=test` and `APP_TEST_AUTH=1`; never set these on a deployed service.
-
-## Customer Google sign-in
-
-Google sign-in uses Google Identity Services' popup authorization-code flow. The browser receives only an authorization code; the server exchanges it using `GOOGLE_CLIENT_SECRET`, verifies the returned ID-token signature and identity claims, then issues the same customer session used by phone sign-in. Configure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the server process environment before startup. In PowerShell, for a local run:
+PowerShell:
 
 ```powershell
-$env:GOOGLE_CLIENT_ID = "your-web-oauth-client-id"
-$env:GOOGLE_CLIENT_SECRET = "your-web-oauth-client-secret"
-npm start
-```
-
-Create a **Web application** OAuth client in Google Cloud Console, configure the OAuth consent screen, and add each exact app origin as an authorized JavaScript origin (for example `http://127.0.0.1:4173`, and `http://localhost:4173` if you use that host). For a deployed site, use its HTTPS origin. Keep the client secret in the server environment only; never place it in `public/` or commit it. The button reports a configuration message until both variables are set. Google sign-in does not request a phone number. An existing verified phone account keeps its number when it is linked; a new Google-only account is identified in the profile by its verified email.
-
-## Local admin panel
-
-Open [http://127.0.0.1:4173/admin](http://127.0.0.1:4173/admin). The Admin UI and protected `/api/admin/*` endpoints use the same configured storage as Customer and Rider. Configure an Admin phone and hash before login:
-
-```powershell
+Set-Location 'C:\Users\Nishant Jaiswal\Documents\blnkk'
+node --version
+npm ci
+if (-not (Test-Path -LiteralPath .env)) { Copy-Item -LiteralPath .env.example -Destination .env }
 node scripts/hash-password.mjs
-$env:ADMIN_PHONE = "your-admin-mobile-number"
-$env:ADMIN_NAME = "Store Administrator"
-$env:ADMIN_PASSWORD_HASH = "paste-the-printed-argon2id-hash"
+```
+
+Edit your private .env with your own values:
+
+```dotenv
+MONGODB_URI=mongodb://<your-host>:<your-port>/purainamart?replicaSet=<your-replica-set>
+NODE_ENV=development
+PORT=4173
+DEV_HOST=127.0.0.1
+ADMIN_PHONE=<your-10-digit-admin-mobile>
+ADMIN_PASSWORD_HASH=<hash-from-the-interactive-helper>
+ADMIN_NAME=Administrator
+```
+
+For an SRV deployment use your provider's connection string with /purainamart explicitly included; keep its credentials in .env. Retain provider-required authentication and TLS options. Do not point local testing at production. The hash helper reads your password interactively; do not paste secrets into shell command arguments or chat.
+
+```powershell
+npm run check
+npm test
+npm run build
 npm start
 ```
 
-Production mode (`NODE_ENV=production`) fails to start without a valid 12-digit Admin phone and compatible Argon2id hash. The Admin password hash can also be generated by running the helper interactively; the plaintext is not saved. Production must terminate HTTPS at the app server or a correctly configured reverse proxy that supplies `X-Forwarded-Proto: https` and the original host.
+Open [Customer](http://127.0.0.1:4173/), [Admin](http://127.0.0.1:4173/admin) or [Rider](http://127.0.0.1:4173/rider). Stop with Ctrl+C. Missing MONGODB_URI fails before a listener is opened. An unavailable database fails startup without a fallback. Production mode additionally requires Admin credentials and should be served through HTTPS.
 
-Admin actions cover catalog products and existing local image paths, categories, inventory, coupons, customer profile/order/wishlist inspection, rider accounts, order assignment/cancellation, and in-app customer notifications. Admin-created riders use an initial password and must change it before operations; Admin resets revoke rider sessions and return a one-time temporary password. Payment fields remain COD or clearly labelled local simulation; notifications are in-app only. Deleting/deactivating catalog records is soft deactivation where order history must remain readable. The Admin does not depend on the former `BlnkIt-source` directory or its MongoDB/Express runtime.
+An empty database has no products, delivery areas or riders. Sign in to Admin, create categories/products and delivery areas, create an authenticated rider, and select that rider in dispatch settings. Customers register with a phone number and password, then save an address in an enabled delivery area. Phone registration does not verify phone ownership: no SMS/OTP provider or fixed OTP login is configured.
 
-## Delivery areas
+## Order and inventory workflow
 
-Manage service areas at `/admin` → **Delivery Areas**. Each area has a name, optional legacy PIN metadata, delivery charge, minimum order, optional free-delivery threshold, delivery estimate, and enabled state. These settings share the configured storage with Customer and Rider. Customer cart/checkout quotes and minimum-order checks are calculated server-side; orders save area and final-charge snapshots. A fresh production store has no delivery areas, no wildcard, and cannot place an order until an Admin configures an active area.
+Orders start at **Order received** in every mode. Admin moves an order to **Being packed**, then **Ready for pickup**. The designated online rider can accept it; Admin can assign an eligible ready order. The rider records pickup, out-for-delivery, COD collection and delivery. COD remains unpaid until the collection action records the server-calculated amount. Customer cancellation is allowed before rider acceptance. Later cancellation records reconciliation requirements where appropriate.
 
-## Demo flows
+Products can use a legacy single price, packed variants or loose quantity tiers. Configure selling price, optional verified MRP, measurement unit, stock and availability explicitly. Packed stock uses pack counts; loose stock uses g or ml. Both the shared product stock and the selected tier's stock limit apply. Custom loose quantities consume shared stock and use the current price per kg/litre, rounded to paise. Order item/address/area/price snapshots preserve checkout values. Editing a price cannot replenish stock; changing options needed to restore a pending order is blocked.
 
-- Development mode has a sample catalog; production starts with an empty catalog until Admin configuration.
-- Save/remove favorites from product cards and detail views, then review them on the Wishlist page. Guest favorites merge into the signed-in account.
-- Apply any active coupon configured by Admin. Development fixtures include `DEMO50`; production does not seed it.
-- Register a new Customer with a phone number, name, and password, or sign in with an existing password or configured Google OAuth.
-- Save a delivery address and place a locally stored order with cash on delivery or simulated UPI.
-- Review the order and simulated tracking timeline from the account or Orders page.
-- Open `/rider` for Rider sign-in. An Admin must create a rider login or reset an existing rider's password; Rider and Admin credentials are not publicly disclosed.
-- Rider sessions use a separate cookie and allowlist. Riders can go online, accept ready customer orders, confirm pickup, mark them out for delivery, and mark them delivered. The customer order history reads the same stored order and timeline.
-- Recipient address and item details are returned to a rider only after that rider accepts the delivery. Order status transitions require the prior step and only the assigned rider can update them.
+Coupons support fixed amounts, percentages, delivery discounts, expiry, global/customer limits and individual assignments. Referral campaigns support coupons or free-product rewards, qualifying delivered orders, expiry and redemption limits. Campaigns start paused. Configure the public origin in Admin before sharing referral links.
 
-Development sample catalog, prices, coupons, fees, estimates, and simulated UPI state are fixtures, not claims about Zepto or real business configuration. No live inventory/serviceability, OTP service, merchant payment processor, wallet, delivery network, support, or Zepto backend is connected. Simulated UPI cannot be placed in production; online payment remains unavailable until a provider and server-side verification are configured. Configure a real customer phone-ownership verification/recovery provider before relying on phone sign-up for public launch.
+## Pages and build
 
-## PostgreSQL configuration and migration
+Direct customer routes: /, /cart, /account, /referral, /orders, /checkout, /categories, /categories/:id, /products/:id, /orders/:id, /rewards/:id/checkout, /search?q=..., /wishlist, /offers and /notifications. Nested refresh and browser Back/Forward use the same application. Protected routes request sign-in and hydrate after login.
 
-PostgreSQL is the required production storage driver. The application uses the maintained `pg` pool when `DATABASE_URL` is set. Without it, only local development and the JSON-based unit/integration harness use `data/store.json`; production startup fails closed. There is no automatic PostgreSQL schema migration or JSON import at application startup.
+The frontend uses native HTML/CSS/ES modules. The production build validates JavaScript and HTML asset references, copies static assets to dist/public, and writes dist/frontend-manifest.json with hashes. Local npm start serves public directly. This build does not bundle external optional SDKs or change server routing.
 
-For Neon, create a project and a separate database/branch for each environment in the Neon console. Copy its pooled PostgreSQL connection string into the server's private `DATABASE_URL` secret (TLS enabled). Never commit a real connection string. Local development may use a direct or pooled URL; use a separate disposable database named with a `test` suffix for PostgreSQL integration tests. `PGSSL=disable` is permitted only for an explicitly local, non-production PostgreSQL server. `.env.example` lists supported variable names without credentials.
+## Optional integrations
 
-Apply versioned SQL migrations explicitly before starting a PostgreSQL-backed server:
+- Google sign-in: configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for a Google OAuth web client and allow the exact browser origin. Password login remains available without Google. OAuth code exchange runs outside retryable database callbacks. No live Google exchange was performed in this audit.
+- Images: local /assets/ images remain supported. CLOUDINARY_URL enables signed browser uploads. Never put this secret into static JavaScript.
+- Notifications: in-app history works without Firebase. Web push requires FCM_PROJECT_ID, the FCM_WEB_* fields in .env.example and backend Application Default Credentials. Use HTTPS (localhost is permitted), the exact PUBLIC_APP_ORIGIN, and explicitly enable notifications in each signed-in browser. GOOGLE_APPLICATION_CREDENTIALS, if used, should point to a private service-account file outside the repository. No SQL migration is part of setup.
 
-```powershell
-$env:DATABASE_URL = "<your-development-or-test-postgres-url>"
-npm run db:migrate
-npm start
-```
+The bounded notification worker uses durable outbox jobs, per-device delivery logs and retries, and sends only after database commit. Provider acceptance does not prove display/read receipt. A process crash after provider acceptance but before logging can cause a duplicate push; exactly-once external delivery is not promised. Native Android/Capacitor push is not implemented.
 
-The schema uses relational tables for customers, Riders, catalog/categories, delivery areas, addresses, carts, wishlist entries, coupons, orders, payment records, sessions/challenges, notifications, referrals/rewards, selected delivery, and application settings. Money is held in `NUMERIC(12,2)` columns. Foreign keys, uniqueness/check constraints, and indexes protect key ownership, inventory values, idempotency, status lookups, and reward/order relationships. Rich records retain their full JSONB payload alongside indexed relational columns so current API response shapes and immutable order snapshots are preserved.
+## Optional legacy JSON import
 
-The current API layer still operates on the existing whole-store object. In PostgreSQL mode, each API request obtains a transaction-level advisory lock, reloads the relational snapshot, and commits dirty changes atomically before returning the buffered JSON response. This prevents cross-process lost updates and serializes checkout, stock changes, coupon/reward writes, Rider acceptance/transitions, and cancellations. It is intentionally a compatibility bridge: each mutation replaces the normalized snapshot within the transaction, and all API requests serialize. This favors correctness and preserves behavior for the present single-store scale, but limits throughput; a future phase should move high-traffic operations to row-scoped repositories and finer-grained locks.
-
-JSON migration is a manual, non-destructive operation. First run the dry-run report:
+Runtime never reads data/store.json. The separate importer is opt-in and defaults to a dry run that performs no database connection:
 
 ```powershell
-npm run db:import:dry-run -- --file data/store.json
+npm run db:mongodb:dry-run -- --file=<path-to-reviewed-legacy-json>
 ```
 
-It reports counts, duplicate IDs, broken relationships, probable fixtures/simulations, and records needing human review without printing customer contact details. Fix structural errors before import. By default an import is refused while suspected demo/simulated data needs review. Only after inspecting the report and confirming the exact disposable/development target, perform an additive, repeatable upsert:
+Review counts and blockers, select authoritative data, and back up your target first. Dry runs omit sessions/challenges, normalize blank unique identifiers, validate required fields/types/unique keys, flag non-COD historical orders and block suspected demo products. Historical orders and snapshots retain their original payment metadata. Only after your review, an explicit import command is:
 
 ```powershell
-npm run db:import -- --file data/store.json --confirm-target=zepto_dev --include-suspected-demo-records
+npm run db:mongodb:import -- --file=<path-to-reviewed-legacy-json> --confirm-target=purainamart
 ```
 
-The import requires `DATABASE_URL`, a successful schema migration, and an exact match between `--confirm-target` and PostgreSQL's current database name. `--include-suspected-demo-records` is an explicit human acknowledgement; it preserves payment labels/statuses verbatim and never turns simulated payments into verified transactions. Imports upsert matching IDs and preserve target-only rows; they do not truncate the target. The original JSON file is never rewritten or deleted. Review both source and target backups before importing genuine data, and start by importing into a dedicated environment-specific database.
+Import uses one transaction with insert-only upserts; it never replaces existing documents. Conflicts with target unique keys abort it. It is intended for a reviewed legacy store small enough for one transaction. No import or real MongoDB connection was performed during this audit. Preserved originals remain under tmp/migration-originals.
 
-The opt-in PostgreSQL integration suite creates a uniquely named temporary schema and drops only that schema after testing. Before connecting it requires `NODE_ENV=test`, a database name containing `test` as a separate token, and `POSTGRES_TEST_CONFIRM_DATABASE` exactly matching the database name. It refuses a target matching the runtime `DATABASE_URL`:
+## Verification and limits
 
-```powershell
-$env:POSTGRES_TEST_DATABASE_URL = "<disposable-database-name-containing-test>"
-$env:NODE_ENV = "test"
-$env:POSTGRES_TEST_CONFIRM_DATABASE = "<exact-database-name>"
-npm run test:postgres
-```
+See [MONGODB-MIGRATION-AUDIT.md](MONGODB-MIGRATION-AUDIT.md) for the final architecture, feature/route coverage and exact check results. Tests use synthetic in-process MongoDB doubles and local HTTP fixtures. They do not validate real database concurrency, transactions, durability or a live COD workflow. Supply your own instance and perform those checks before operational use. Backups, monitoring, restore drills, load testing and external-provider delivery are environment-specific and are not configured by this repository.
 
-`npm test` runs the JSON-backed suite; the PostgreSQL suite is skipped unless the disposable database URL is configured. The integration suite covers schema creation, repeatable synthetic JSON import, account/session persistence, cart/coupon/order calculations, checkout idempotency, inventory constraints/rollback, Rider/COD workflow, authorization, Admin visibility, and restart recovery. Live Neon connectivity and production backup/restore remain environment-specific and must be verified separately.
+## Asset provenance
 
-## Production and data durability status
-
-Production does not seed fixtures into a new PostgreSQL database. A manually imported store is subject to the existing production cleanup rules: records with the exact known seed marker `Demo listing for local browsing.` are deactivated (not deleted), and `DEMO50` is deactivated only when its label identifies a demo offer. Exact old sample offer notifications are hidden from customer/Admin views but remain stored. Production startup also revokes legacy Customer/Rider/Admin sessions that lack the current authentication method. Review imported data in Admin before exposing it. PostgreSQL replaces JSON as the selected production persistence layer, but this project does not configure backups, point-in-time recovery, monitoring, or restore drills automatically. Configure and verify those with the selected hosting provider before public launch.
-
-Authentication throttling is currently in-memory, so it resets on process restart and does not coordinate multiple server instances; add edge rate limiting and durable abuse controls for public use. Phone registration does not prove ownership because OTP is not configured. Existing ambiguous accounts, riders, orders, payments, and addresses are deliberately retained; review them in Admin before going live. The current local store has a `Demo Rider` record assigned to one active `Rider assigned` historical order; the record/order are preserved, but production startup will clear that rider as the designated recipient if it has no password hash. An Admin must resolve the active order and designate an authenticated Rider. Do not use the existing local `data/store.json` as a production store without inspecting and backing it up.
-
-Production orders begin at **Order received**. An Admin must explicitly move them to **Being packed** and **Ready for pickup**; only then can the designated, authenticated Rider accept the order. Development fixtures still create immediately ready orders for local workflow testing. Production does not assign a default rider or fabricate a per-delivery earning; Admin must configure a designated Rider, and an earning rate is not configured. This does not implement real store readiness automation, dispatch/geofencing, location tracking, barcode scanning, push notifications, rider KYC/documents, support/SOS, payroll, or payout. Configure real identity verification, dispatch rules, rider access management, and operational services before deployment.
+The following records describe earlier visual research and asset choices, not verification of the current backend:
 
 ## Rider package evidence and limits
 
@@ -143,59 +115,3 @@ Useful REA evidence IDs from the analysis session:
 - XAPK inventory: `ev_32e1bdf27a4ae1f8eb27abf7836e457f18e18d264cef9bc9078126cb5bc57481`
 - Base APK inventory: `ev_69a3c77738d5c0e72563cea1ad168663cdc9ce5712b3591d1d0c91be331fdc45`
 - Base APK extracted contents: `ev_ead21b58f5cfc132fdf0e31484fa16517d4d290a7a245556777532bb42b694b5`
-
-## Verification performed
-
-- Previous launch/security test run: `npm test` passed 30/30 tests on 2026-10-20; targeted password suite passed after Rider session-revocation, payment-method validation, session-cookie, and production-order lifecycle regression checks were added. Tests use temporary JSON stores and do not operate on `data/store.json`.
-- Production fixture-migration test seeds a temporary store with marked sample product/coupon/notification records plus customer order/address/cart/wishlist records. It verified demo content is hidden/deactivated while source records and order/customer data are preserved, and unauthenticated legacy OTP sessions are revoked.
-- Verified Argon2id registration/login/change, generic failure/duplicate responses, passwordless legacy-account preservation, test-only OTP isolation, Rider credential issuance/reset/deactivation/deletion revocation, Customer/Admin/Rider route authorization, production empty-store startup, CSRF rejection, session expiration after restart, logout invalidation, and same-order Customer/Admin status updates.
-- Google token signature/issuer/audience/expiry/linking logic is unit tested with generated keys. Live Google sign-in was not tested: production Google OAuth credentials and an authorized domain are not configured.
-- Production checks verified that UPI checkout is rejected, COD remains unpaid until the Rider collection flow records the exact amount, malformed payment methods are rejected, and production responses include HSTS/CSP headers. No real merchant payment provider or live browser payment flow is configured.
-- `npm audit --omit=dev` could not reach the npm advisory endpoint during the earlier launch audit. The PostgreSQL migration pass later completed the same command successfully with `found 0 vulnerabilities`; this covers production dependencies at that time, not future advisories.
-- No production write was made to the existing `data/store.json`; all new tests use temporary stores. Previously documented local browser checks belong to earlier application verification and do not establish this auth UI was visually tested at mobile dimensions during this launch audit.
-
-- `node --check server.mjs`
-- `node --check public/app.js`
-- `node --check public/rider-app.js`
-- Rendered the home page in the local browser and inspected its accessible UI.
-- Exercised earlier development HTTP flows: health/bootstrap, product search, cart quantity changes, coupon application and below-minimum rejection, isolated test OTP request/verify, guest cart and wishlist merge, address creation, COD and simulated UPI order placement, order listing, and order details.
-- Verified the coupon's ₹50 discount on a ₹387 subtotal (₹339 total with the demo fees), its removal when the subtotal falls below ₹299 (₹156 total on a ₹129 subtotal), and the saved order totals for both payment choices.
-- Used the browser to save a favorite from a product card, open Wishlist, remove the item there, and toggle it from product details; confirmed the empty state and updated heart state.
-- Verified `/rider` loads and completed the rider sign-in and dashboard in the browser.
-- Exercised a new customer order through rider acceptance, pickup, out-for-delivery, and delivery using separate customer and rider sessions. Confirmed the customer saw every shared timeline update and final `Delivered` status; confirmed the ₹50 coupon remained consistent from cart (₹407 subtotal, ₹359 total) through the saved order.
-- Confirmed unknown rider numbers are denied, customer sessions cannot call rider APIs, rider sessions cannot call customer order APIs, unassigned order details are hidden, offline acceptance is denied, and skipping a delivery transition is denied.
-- Removed temporary customer/order records created for the rider flow check and returned the demo rider to offline after verification.
-- Verified that all copied rider image/font URLs return successfully with appropriate MIME types, the browser loads the TT Norms Pro font and 512px Rider app icon, and the original navigation images render in the Rider dashboard screenshot.
-- Exercised delivery-area create/edit/enable/disable/delete and backend authorization against isolated temporary JSON stores. Verified PIN-based quotes, address switching, coupon retention, minimum-order rejection, server-side fee/total calculation despite forged client values, stable historical order snapshots after a fee edit, and Rider inbox/detail area/address visibility.
-- Opened Customer cart and checkout in the browser and confirmed the editable demo area's charge, minimum, free-delivery threshold, availability, and ETA are shown; checked Customer, Rider, and Admin routes plus the delivery-area stylesheet return successfully from the running local server.
-
-## PostgreSQL migration verification (2026-10-21)
-
-- Added the `pg` pool driver, versioned schema migration, PostgreSQL snapshot persistence adapter, and explicit repeatable JSON importer. `DATABASE_URL` and `POSTGRES_TEST_DATABASE_URL` were not configured in this environment, so no live database was contacted, migrated, or imported. Production startup now fails closed without `DATABASE_URL`.
-- `npm test`: 32 passed, 0 failed, 2 skipped. The skipped cases require a configured PostgreSQL test database (one production-route scenario and the PostgreSQL integration suite).
-- `npm run test:postgres`: skipped because `POSTGRES_TEST_DATABASE_URL` was absent. Live Neon connectivity, actual SQL migration/import, PostgreSQL transaction behavior, and database restart recovery remain unverified.
-- `npm run db:import:dry-run -- --file data/store.json`: 6 users, 9 categories, 22 products, 1 rider, 2 delivery areas, 13 orders, 10 addresses, 1 coupon, 11 sessions, 18 notifications, 7 carts, 2 wishlists; no duplicate IDs or broken relationships. The report flags demo products/coupon/rider, simulated payment orders, and orders lacking area snapshots for manual review. No import was performed.
-- `node --check` passed for all 16 project JavaScript/MJS files. `npm audit --omit=dev` reported 0 vulnerabilities. There is no production build script in `package.json`.
-- The source `data/store.json` remains unchanged (60,771 bytes; last modified 2026-10-20 18:10 local). No production records or external services were modified.
-- Known bridge limitation: PostgreSQL mode currently reloads and persists the complete application snapshot in a transaction under one advisory lock per API request. This keeps existing API behavior and serializes mutations, but also serializes reads and writes; move busy operations to row-scoped repositories before expecting multi-instance/high-throughput production.
-
-## Firebase Cloud Messaging setup
-
-The Customer, Rider, and Admin websites use the Firebase Web Messaging SDK loaded from Google's official `gstatic` CDN. Browser registration is explicit: a signed-in user must choose **Enable notifications** and grant browser permission. Foreground messages update the open app; background messages are handled by `public/firebase-messaging-sw.js`. In-app notification history remains available when push is unsupported or disabled.
-
-1. In Firebase Console, select/create a Firebase project and register a **Web app**. Put its public web configuration values in `FCM_WEB_API_KEY`, `FCM_WEB_AUTH_DOMAIN`, `FCM_WEB_PROJECT_ID`, `FCM_WEB_MESSAGING_SENDER_ID`, and `FCM_WEB_APP_ID`.
-2. Open **Project settings → Cloud Messaging**, enable the required Firebase Cloud Messaging / FCM Registration APIs for the project, create a Web Push certificate key pair, and set its public key as `FCM_WEB_VAPID_KEY`.
-3. Add the production website domain to Firebase's authorized domains. Browser push requires HTTPS (localhost is permitted for local development). Configure `PUBLIC_APP_ORIGIN` to the exact HTTPS origin used by the site so FCM links return to the application.
-4. Configure `FCM_PROJECT_ID` on the backend. Give the backend an appropriately scoped service identity that can send FCM messages. Prefer the host's workload identity/Application Default Credentials. For a private service-account file, store it outside this repository and set `GOOGLE_APPLICATION_CREDENTIALS` in the private server environment. Never put service credentials in `.env.example`, source control, static files, or browser configuration.
-5. Use distinct Firebase projects and environment variables for development and production. Restart the server after changing them. Sign in to the desired Customer, Rider, or Admin account on an HTTPS browser, enable notifications, and use the Admin's test-to-this-browser action. Verify the attempt in Admin delivery logs and browser/device behavior. “Accepted by FCM” is only provider handoff; it does not confirm display or reading.
-6. Apply database migrations only after selecting and verifying the intended non-production database; migration `002_fcm_notifications.sql` adds notification persistence tables. Do not import the JSON store as part of Firebase setup.
-
-The web push code stores platform-scoped Firebase Installation IDs and will not treat web registrations as Android tokens. For a future Capacitor app, register an Android app in Firebase, add the generated `google-services.json` only to the native Android project (and exclude secrets as appropriate), install a maintained Capacitor push plugin compatible with the chosen Capacitor release, request Android 13+ notification permission, create notification channels, refresh/register native FCM tokens using `platform: "android"`, and implement foreground/background tap routing after revalidating the signed-in account and order access. Test deep links and account switching on physical Android devices. No Capacitor project or native push integration is included yet.
-
-## Quantity pricing and inventory
-
-Existing products remain on their current single-price model until an Admin explicitly configures quantity pricing. No current product is automatically classified as packed or loose, and no price, MRP, unit, or stock quantity is inferred from its description. In Admin, each product can keep its legacy price or be configured as packed variants or loose quantity tiers. The Admin must provide each option's label, integer base quantity, positive selling price, optional verified MRP/reference price, stock allocation, and availability. MRP must be at least the selling price; discount labels appear only when a higher reference price is configured.
-
-Loose-tier stock is allocated independently to each option and measured in the product's selected base unit (`g` or `ml`). A sale consumes `quantityBase × count`; packed stock is tracked and consumed as integer pack counts. Do not allocate the same physical stock to multiple tiers. Existing single-price products and carts remain supported; conversion is blocked while legacy cart lines still exist for that product. Disabled, removed, or depleted selected options remain visible as unavailable cart lines and block checkout until the customer removes or changes them.
-
-Cart and order line prices are recalculated server-side from the configured option. Order lines keep the chosen product/variant identifiers, label, unit/base quantities, count, MRP, selling price, discount, and line total as immutable JSON snapshots; later Admin price edits do not rewrite past orders. PostgreSQL persists variant cart counts in migration `003_quantity_pricing.sql`; apply it only through the explicit migration command after selecting the intended database. Product definitions and order snapshots use the existing JSONB payloads, so this migration only creates the dedicated variant-cart table.

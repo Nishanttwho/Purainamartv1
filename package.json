@@ -1,5 +1,5 @@
 {
-  "name": "zepto-local-recreation",
+  "name": "purainamart",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -7,16 +7,16 @@
     "node": ">=24.7.0 <25"
   },
   "scripts": {
-    "start": "node server.mjs",
+    "start": "node --env-file-if-exists=.env server.mjs",
     "test": "node --test \"test/*.test.mjs\"",
-    "test:postgres": "node --test test/postgres.integration.test.mjs",
-    "db:migrate": "node scripts/migrate-postgres.mjs",
-    "db:import:dry-run": "node scripts/import-json-store.mjs --dry-run",
-    "db:import": "node scripts/import-json-store.mjs --import"
+    "check": "node scripts/check.mjs",
+    "build": "node scripts/build-frontend.mjs",
+    "db:mongodb:dry-run": "node scripts/migrate-json-to-mongodb.mjs",
+    "db:mongodb:import": "node --env-file-if-exists=.env scripts/migrate-json-to-mongodb.mjs --import"
   },
   "dependencies": {
     "firebase-admin": "^14.5.0",
-    "pg": "^8.23.1",
+    "mongodb": "^7.7.0",
     "qrcode": "^1.5.4"
   }
 }

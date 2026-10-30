@@ -1,5 +1,6 @@
 # Dependencies and generated local output
 node_modules/
+dist/
 coverage/
 .nyc_output/
 .cache/
