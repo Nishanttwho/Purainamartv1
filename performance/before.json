@@ -1,0 +1,320 @@
+{
+  "label": "before",
+  "measuredAt": "2026-10-31T02:56:45.580Z",
+  "environment": "Local Node process to the existing configured MongoDB; not deployed HTTP timings",
+  "database": "purainamart",
+  "repetitions": 5,
+  "routes": {
+    "/api/bootstrap": {
+      "medianMs": 1572.45,
+      "minMs": 1538.2,
+      "maxMs": 2190.95,
+      "queryCounts": [
+        17,
+        17,
+        17,
+        17,
+        17
+      ],
+      "databaseCommandMs": {
+        "medianMs": 1556,
+        "minMs": 1516,
+        "maxMs": 2157
+      },
+      "responseBytes": 5623
+    },
+    "/api/products?limit=24": {
+      "medianMs": 194.77,
+      "minMs": 179.55,
+      "maxMs": 217.72,
+      "queryCounts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "databaseCommandMs": {
+        "medianMs": 191,
+        "minMs": 177,
+        "maxMs": 215
+      },
+      "responseBytes": 1682
+    },
+    "/api/cart": {
+      "medianMs": 462.33,
+      "minMs": 434.62,
+      "maxMs": 487.31,
+      "queryCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "databaseCommandMs": {
+        "medianMs": 456,
+        "minMs": 431,
+        "maxMs": 482
+      },
+      "responseBytes": 1332
+    },
+    "/api/orders?limit=20": {
+      "medianMs": 90.04,
+      "minMs": 85.01,
+      "maxMs": 95,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 89,
+        "minMs": 84,
+        "maxMs": 94
+      },
+      "responseBytes": 13
+    },
+    "/api/addresses": {
+      "medianMs": 98.33,
+      "minMs": 83.72,
+      "maxMs": 106.49,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 97,
+        "minMs": 83,
+        "maxMs": 106
+      },
+      "responseBytes": 16
+    },
+    "/api/coupons": {
+      "medianMs": 89.86,
+      "minMs": 84.81,
+      "maxMs": 104.92,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 89,
+        "minMs": 84,
+        "maxMs": 104
+      },
+      "responseBytes": 14
+    },
+    "/api/admin/bootstrap": {
+      "medianMs": 3606.43,
+      "minMs": 3499.16,
+      "maxMs": 4080.46,
+      "queryCounts": [
+        38,
+        38,
+        38,
+        38,
+        38
+      ],
+      "databaseCommandMs": {
+        "medianMs": 3567,
+        "minMs": 3466,
+        "maxMs": 4050
+      },
+      "responseBytes": 15898
+    },
+    "/api/admin/bootstrap?view=overview&limit=25": {
+      "medianMs": 3574.71,
+      "minMs": 3480.31,
+      "maxMs": 4020.85,
+      "queryCounts": [
+        38,
+        38,
+        38,
+        38,
+        38
+      ],
+      "databaseCommandMs": {
+        "medianMs": 3542,
+        "minMs": 3453,
+        "maxMs": 3993
+      },
+      "responseBytes": 15897
+    },
+    "/api/admin/products?limit=25": {
+      "medianMs": 181.01,
+      "minMs": 168.8,
+      "maxMs": 200.53,
+      "queryCounts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "databaseCommandMs": {
+        "medianMs": 179,
+        "minMs": 167,
+        "maxMs": 199
+      },
+      "responseBytes": 1660
+    },
+    "/api/admin/customers?limit=25": {
+      "medianMs": 763.62,
+      "minMs": 739.97,
+      "maxMs": 773.55,
+      "queryCounts": [
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "databaseCommandMs": {
+        "medianMs": 757,
+        "minMs": 735,
+        "maxMs": 769
+      },
+      "responseBytes": 657
+    },
+    "/api/rider/bootstrap?limit=20": {
+      "medianMs": 650.01,
+      "minMs": 632.53,
+      "maxMs": 671.05,
+      "queryCounts": [
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "databaseCommandMs": {
+        "medianMs": 644,
+        "minMs": 627,
+        "maxMs": 665
+      },
+      "responseBytes": 2722
+    },
+    "cart-add-rollback": {
+      "medianMs": 826.05,
+      "minMs": 816.99,
+      "maxMs": 831.39,
+      "queryCounts": [
+        9,
+        9,
+        9,
+        9,
+        9
+      ],
+      "aborted": true
+    },
+    "cart-quantity-rollback": {
+      "medianMs": 819.72,
+      "minMs": 810.33,
+      "maxMs": 833.99,
+      "queryCounts": [
+        9,
+        9,
+        9,
+        9,
+        9
+      ],
+      "aborted": true
+    }
+  },
+  "queries": {
+    "catalogue": {
+      "executionTimeMillis": 0,
+      "returned": 2,
+      "documentsExamined": 2,
+      "keysExamined": 0,
+      "stages": [
+        {
+          "stage": "SORT"
+        },
+        {
+          "stage": "COLLSCAN"
+        }
+      ]
+    },
+    "admin-products": {
+      "executionTimeMillis": 0,
+      "returned": 2,
+      "documentsExamined": 2,
+      "keysExamined": 0,
+      "stages": [
+        {
+          "stage": "SORT"
+        },
+        {
+          "stage": "COLLSCAN"
+        }
+      ]
+    },
+    "customer-orders": {
+      "executionTimeMillis": 0,
+      "returned": 0,
+      "documentsExamined": 0,
+      "keysExamined": 0,
+      "stages": [
+        {
+          "stage": "SORT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "index": "orders_customer_created"
+        }
+      ]
+    }
+  },
+  "assets": {
+    "app.js": {
+      "bytes": 142906,
+      "gzipBytes": 33363,
+      "brotliBytes": 27524
+    },
+    "admin.js": {
+      "bytes": 80456,
+      "gzipBytes": 20802,
+      "brotliBytes": 17805
+    },
+    "rider-app.js": {
+      "bytes": 29932,
+      "gzipBytes": 8526,
+      "brotliBytes": 7275
+    },
+    "styles.css": {
+      "bytes": 68961,
+      "gzipBytes": 15148,
+      "brotliBytes": 13168
+    },
+    "puraina-commerce.css": {
+      "bytes": 16165,
+      "gzipBytes": 3757,
+      "brotliBytes": 3194
+    },
+    "index.html": {
+      "bytes": 3248,
+      "gzipBytes": 1168,
+      "brotliBytes": 883
+    }
+  },
+  "connectAndPingMs": 1445.8,
+  "available": {
+    "customer": true,
+    "admin": true,
+    "rider": true,
+    "product": true
+  }
+}

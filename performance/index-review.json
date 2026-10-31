@@ -1,0 +1,628 @@
+{
+  "measuredAt": "2026-10-31T04:37:25.964Z",
+  "readOnly": true,
+  "indexes": [
+    {
+      "collection": "products",
+      "name": "products_catalogue_order",
+      "keys": {
+        "position": 1,
+        "rank": 1,
+        "id": 1
+      },
+      "installed": true
+    },
+    {
+      "collection": "products",
+      "name": "products_admin_page",
+      "keys": {
+        "createdAt": -1,
+        "id": 1
+      },
+      "installed": true
+    },
+    {
+      "collection": "categories",
+      "name": "categories_public_order",
+      "keys": {
+        "position": 1,
+        "id": 1
+      },
+      "installed": true
+    },
+    {
+      "collection": "addresses",
+      "name": "addresses_customer_default",
+      "keys": {
+        "customerId": 1,
+        "isDefault": 1
+      },
+      "installed": true
+    },
+    {
+      "collection": "orders",
+      "name": "orders_admin_page",
+      "keys": {
+        "createdAt": -1,
+        "id": 1
+      },
+      "installed": true
+    },
+    {
+      "collection": "orders",
+      "name": "orders_customer_page",
+      "keys": {
+        "userId": 1,
+        "createdAt": -1,
+        "id": 1
+      },
+      "installed": true
+    },
+    {
+      "collection": "riderNotifications",
+      "name": "rider_notifications_page",
+      "keys": {
+        "riderId": 1,
+        "createdAt": -1,
+        "id": 1
+      },
+      "installed": true
+    },
+    {
+      "collection": "riderNotifications",
+      "name": "rider_notifications_unread",
+      "keys": {
+        "riderId": 1,
+        "readAt": 1
+      },
+      "installed": true
+    }
+  ],
+  "exactDuplicates": [],
+  "prefixOverlaps": [
+    {
+      "collection": "orders",
+      "indexes": [
+        "orders_customer_created",
+        "orders_customer_page"
+      ],
+      "unique": [
+        false,
+        false
+      ]
+    }
+  ],
+  "queries": {
+    "catalogue": {
+      "unhinted": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 2,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "products_catalogue_order"
+          }
+        ]
+      },
+      "addedIndex": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 2,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "products_catalogue_order"
+          }
+        ]
+      },
+      "naturalScan": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "SORT"
+          },
+          {
+            "stage": "COLLSCAN"
+          }
+        ]
+      }
+    },
+    "admin-products": {
+      "unhinted": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 2,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "products_admin_page"
+          }
+        ]
+      },
+      "addedIndex": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 2,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "products_admin_page"
+          }
+        ]
+      },
+      "naturalScan": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "SORT"
+          },
+          {
+            "stage": "COLLSCAN"
+          }
+        ]
+      }
+    },
+    "categories": {
+      "unhinted": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 1,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "categories_public_order"
+          }
+        ]
+      },
+      "addedIndex": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 1,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "categories_public_order"
+          }
+        ]
+      },
+      "naturalScan": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "SORT"
+          },
+          {
+            "stage": "COLLSCAN"
+          }
+        ]
+      }
+    },
+    "admin-orders": {
+      "unhinted": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 1,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "orders_admin_page"
+          }
+        ]
+      },
+      "addedIndex": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 1,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "orders_admin_page"
+          }
+        ]
+      },
+      "naturalScan": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "SORT"
+          },
+          {
+            "stage": "COLLSCAN"
+          }
+        ]
+      }
+    },
+    "customer-orders": {
+      "unhinted": {
+        "returned": 0,
+        "documentsExamined": 0,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "orders_customer_page"
+          }
+        ]
+      },
+      "addedIndex": {
+        "returned": 0,
+        "documentsExamined": 0,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "orders_customer_page"
+          }
+        ]
+      },
+      "naturalScan": {
+        "returned": 0,
+        "documentsExamined": 1,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "SORT"
+          },
+          {
+            "stage": "COLLSCAN"
+          }
+        ]
+      }
+    },
+    "default-address": {
+      "unhinted": {
+        "returned": 0,
+        "documentsExamined": 0,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "addresses_customer_default"
+          }
+        ]
+      },
+      "addedIndex": {
+        "returned": 0,
+        "documentsExamined": 0,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "addresses_customer_default"
+          }
+        ]
+      },
+      "naturalScan": {
+        "returned": 0,
+        "documentsExamined": 1,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "COLLSCAN"
+          }
+        ]
+      }
+    },
+    "rider-notifications": {
+      "unhinted": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 2,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "rider_notifications_page"
+          }
+        ]
+      },
+      "addedIndex": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 2,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "rider_notifications_page"
+          }
+        ]
+      },
+      "naturalScan": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "SORT"
+          },
+          {
+            "stage": "COLLSCAN"
+          }
+        ]
+      }
+    },
+    "rider-unread": {
+      "unhinted": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 2,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "rider_notifications_unread"
+          }
+        ]
+      },
+      "addedIndex": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 2,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "rider_notifications_unread"
+          }
+        ]
+      },
+      "naturalScan": {
+        "returned": 2,
+        "documentsExamined": 2,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "COLLSCAN"
+          }
+        ]
+      }
+    },
+    "checkout-product": {
+      "unhinted": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 1,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "EXPRESS_IXSCAN",
+            "index": "products_id_unique"
+          }
+        ]
+      }
+    },
+    "checkout-idempotency": {
+      "unhinted": {
+        "returned": 0,
+        "documentsExamined": 0,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "orders_customer_created"
+          }
+        ]
+      }
+    },
+    "cart-owner": {
+      "unhinted": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 1,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "EXPRESS_IXSCAN",
+            "index": "carts_owner_unique"
+          }
+        ]
+      }
+    },
+    "session-lookup": {
+      "unhinted": {
+        "returned": 0,
+        "documentsExamined": 0,
+        "keysExamined": 0,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "sessions_kind_hash_unique"
+          }
+        ]
+      }
+    },
+    "rider-inbox": {
+      "unhinted": {
+        "returned": 0,
+        "documentsExamined": 1,
+        "keysExamined": 1,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "orders_admin_page"
+          }
+        ]
+      }
+    },
+    "rider-delivered": {
+      "unhinted": {
+        "returned": 1,
+        "documentsExamined": 1,
+        "keysExamined": 1,
+        "executionTimeMillis": 0,
+        "stages": [
+          {
+            "stage": "LIMIT"
+          },
+          {
+            "stage": "FETCH"
+          },
+          {
+            "stage": "IXSCAN",
+            "index": "orders_rider_status"
+          }
+        ]
+      }
+    }
+  },
+  "previousAuditResidue": {
+    "orders": 0,
+    "addresses": 0,
+    "notifications": 0,
+    "riderNotifications": 0,
+    "shoppingPreferences": 0
+  }
+}

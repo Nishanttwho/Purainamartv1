@@ -1,0 +1,374 @@
+{
+  "label": "before",
+  "environment": "Headless Edge, 390x844 mobile viewport, synthetic local Mongo fixture, no production writes",
+  "samples": [
+    {
+      "authLabels": [
+        {
+          "label": "Sign in",
+          "ms": 170.79999999981374
+        },
+        {
+          "label": "Customer",
+          "ms": 957.6999999999534
+        }
+      ],
+      "navigation": {
+        "name": "http://127.0.0.1:61559/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 0,
+        "navigationId": 7345,
+        "initiatorType": "navigation",
+        "deliveryType": "",
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 4.399999999906868,
+        "domainLookupStart": 4.399999999906868,
+        "domainLookupEnd": 4.399999999906868,
+        "connectStart": 4.399999999906868,
+        "secureConnectionStart": 0,
+        "connectEnd": 4.399999999906868,
+        "requestStart": 37.89999999990687,
+        "responseStart": 77.29999999981374,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 77.29999999981374,
+        "responseEnd": 206.19999999995343,
+        "transferSize": 3548,
+        "encodedBodySize": 3248,
+        "decodedBodySize": 3248,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 0,
+        "unloadEventEnd": 0,
+        "domInteractive": 216.39999999990687,
+        "domContentLoadedEventStart": 625.2999999998137,
+        "domContentLoadedEventEnd": 625.2999999998137,
+        "domComplete": 0,
+        "loadEventStart": 0,
+        "loadEventEnd": 0,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {}
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 480,
+          "duration": 0,
+          "navigationId": 7345,
+          "paintTime": 462.19999999995343,
+          "presentationTime": 480
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 480,
+          "duration": 0,
+          "navigationId": 7345,
+          "paintTime": 462.19999999995343,
+          "presentationTime": 480
+        }
+      ],
+      "resources": [
+        {
+          "url": "/app.js",
+          "ms": 70.9000000001397,
+          "bytes": 143206
+        },
+        {
+          "url": "/pagination.js",
+          "ms": 82.60000000009313,
+          "bytes": 2808
+        },
+        {
+          "url": "/product-images.js",
+          "ms": 121,
+          "bytes": 693
+        },
+        {
+          "url": "/router.js",
+          "ms": 132.10000000009313,
+          "bytes": 4143
+        },
+        {
+          "url": "/api/bootstrap",
+          "ms": 237.10000000009313,
+          "bytes": 4326
+        },
+        {
+          "url": "/api/notifications/config",
+          "ms": 246.4000000001397,
+          "bytes": 374
+        }
+      ]
+    },
+    {
+      "authLabels": [
+        {
+          "label": "Sign in",
+          "ms": 426.80000000004657
+        },
+        {
+          "label": "Customer",
+          "ms": 674.4000000001397
+        }
+      ],
+      "navigation": {
+        "name": "http://127.0.0.1:61559/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 596.7000000001863,
+        "navigationId": 8975,
+        "initiatorType": "navigation",
+        "deliveryType": "cache",
+        "nextHopProtocol": "",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 3.300000000046566,
+        "domainLookupStart": 3.300000000046566,
+        "domainLookupEnd": 3.300000000046566,
+        "connectStart": 3.300000000046566,
+        "secureConnectionStart": 0,
+        "connectEnd": 3.300000000046566,
+        "requestStart": 156.10000000009313,
+        "responseStart": 168.4000000001397,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 168.4000000001397,
+        "responseEnd": 208,
+        "transferSize": 300,
+        "encodedBodySize": 3248,
+        "decodedBodySize": 3248,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 309.5,
+        "unloadEventEnd": 309.5,
+        "domInteractive": 427.20000000018626,
+        "domContentLoadedEventStart": 589.1000000000931,
+        "domContentLoadedEventEnd": 589.1000000000931,
+        "domComplete": 596.5,
+        "loadEventStart": 596.6000000000931,
+        "loadEventEnd": 596.7000000001863,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {}
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 544,
+          "duration": 0,
+          "navigationId": 8975,
+          "paintTime": 532,
+          "presentationTime": 544
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 544,
+          "duration": 0,
+          "navigationId": 8975,
+          "paintTime": 532,
+          "presentationTime": 544
+        }
+      ],
+      "resources": [
+        {
+          "url": "/app.js",
+          "ms": 98,
+          "bytes": 300
+        },
+        {
+          "url": "/pagination.js",
+          "ms": 38.5,
+          "bytes": 300
+        },
+        {
+          "url": "/product-images.js",
+          "ms": 40.89999999990687,
+          "bytes": 300
+        },
+        {
+          "url": "/router.js",
+          "ms": 43,
+          "bytes": 300
+        },
+        {
+          "url": "/api/bootstrap",
+          "ms": 71.20000000018626,
+          "bytes": 4326
+        },
+        {
+          "url": "/api/notifications/config",
+          "ms": 69,
+          "bytes": 374
+        },
+        {
+          "url": "/push-client.js",
+          "ms": 6.600000000093132,
+          "bytes": 300
+        }
+      ]
+    },
+    {
+      "authLabels": [
+        {
+          "label": "Sign in",
+          "ms": 65.19999999995343
+        },
+        {
+          "label": "Customer",
+          "ms": 252.5999999998603
+        }
+      ],
+      "navigation": {
+        "name": "http://127.0.0.1:61559/",
+        "entryType": "navigation",
+        "startTime": 0,
+        "duration": 201.30000000004657,
+        "navigationId": 7898,
+        "initiatorType": "navigation",
+        "deliveryType": "cache",
+        "nextHopProtocol": "",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "text/html",
+        "contentEncoding": "",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 4.300000000046566,
+        "domainLookupStart": 4.300000000046566,
+        "domainLookupEnd": 4.300000000046566,
+        "connectStart": 4.300000000046566,
+        "secureConnectionStart": 0,
+        "connectEnd": 4.300000000046566,
+        "requestStart": 23.699999999953434,
+        "responseStart": 25.699999999953434,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 25.699999999953434,
+        "responseEnd": 29.5,
+        "transferSize": 300,
+        "encodedBodySize": 3248,
+        "decodedBodySize": 3248,
+        "responseStatus": 200,
+        "serverTiming": [],
+        "unloadEventStart": 46.199999999953434,
+        "unloadEventEnd": 46.199999999953434,
+        "domInteractive": 65.5999999998603,
+        "domContentLoadedEventStart": 191.69999999995343,
+        "domContentLoadedEventEnd": 191.69999999995343,
+        "domComplete": 201.19999999995343,
+        "loadEventStart": 201.30000000004657,
+        "loadEventEnd": 201.30000000004657,
+        "type": "navigate",
+        "redirectCount": 0,
+        "activationStart": 0,
+        "criticalCHRestart": 0,
+        "notRestoredReasons": null,
+        "confidence": {}
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "entryType": "paint",
+          "startTime": 124,
+          "duration": 0,
+          "navigationId": 7898,
+          "paintTime": 97.0999999998603,
+          "presentationTime": 124
+        },
+        {
+          "name": "first-contentful-paint",
+          "entryType": "paint",
+          "startTime": 124,
+          "duration": 0,
+          "navigationId": 7898,
+          "paintTime": 97.0999999998603,
+          "presentationTime": 124
+        }
+      ],
+      "resources": [
+        {
+          "url": "/app.js",
+          "ms": 30.300000000046566,
+          "bytes": 300
+        },
+        {
+          "url": "/pagination.js",
+          "ms": 77.4000000001397,
+          "bytes": 300
+        },
+        {
+          "url": "/product-images.js",
+          "ms": 78.10000000009313,
+          "bytes": 300
+        },
+        {
+          "url": "/router.js",
+          "ms": 79,
+          "bytes": 300
+        },
+        {
+          "url": "/api/bootstrap",
+          "ms": 48.5,
+          "bytes": 4326
+        },
+        {
+          "url": "/api/notifications/config",
+          "ms": 47.5,
+          "bytes": 374
+        },
+        {
+          "url": "/push-client.js",
+          "ms": 6,
+          "bytes": 300
+        },
+        {
+          "url": "/firebasejs/13.0.0/firebase-app.js",
+          "ms": 0,
+          "bytes": 0
+        },
+        {
+          "url": "/firebasejs/13.0.0/firebase-messaging.js",
+          "ms": 0,
+          "bytes": 0
+        }
+      ]
+    }
+  ],
+  "looseAdd": {
+    "path": "/products/loose",
+    "badge": "0",
+    "stepper": false
+  },
+  "errors": []
+}

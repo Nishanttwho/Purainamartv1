@@ -1,12 +1,14 @@
 import { paginatedRequest } from './pagination.js';
+import { createApiClient } from './api-client.js';
 (() => {
   const $ = (s, root = document) => root.querySelector(s);
   const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
   const money = value => `₹${Number(value || 0).toLocaleString('en-IN')}`;
-  const state = { data: null, view: 'overview', config: null, challengeId: null, customers: [] };
+  const state = { offset: 0, query: '', status: 'all', loadSequence: 0, actionPending: false, data: null, view: 'overview', config: null, challengeId: null, customers: [] };
   const login = $('#login'), app = $('#app'), editor = $('#editor');
 
-  const api = (url, options = {}) => paginatedRequest(request, url, options);
+  const api = createApiClient(request);
+  const allPages = (url, options = {}) => paginatedRequest(api, url, options);
 async function request(url, options = {}) {
     const isReadOnly = String(options.method || 'GET').toUpperCase() === 'GET';
     const controller = isReadOnly ? new AbortController() : null;
@@ -34,22 +36,39 @@ async function request(url, options = {}) {
   const post = (url, body) => api(url, { method: 'POST', body: JSON.stringify(body) });
   const patch = (url, body) => api(url, { method: 'PATCH', body: JSON.stringify(body) });
   function toast(message, error = false) { const node = $('#notice'); node.textContent = message; node.classList.toggle('error', error); node.classList.remove('hidden'); clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.add('hidden'), 4200); }
-  function showLogin() { login.classList.remove('hidden'); app.classList.add('hidden'); }
+  function showLogin() { state.data = null; api.clear(); login.classList.remove('hidden'); app.classList.add('hidden'); }
   function showApp(admin) { login.classList.add('hidden'); app.classList.remove('hidden'); $('#admin-name').textContent = admin?.name || 'Administrator'; }
   async function init() {
     $('#demo-hint').textContent = 'Sign in with your administrator credentials.';
-    let admin;
-    try { ({ admin } = await api('/api/admin/session')); }
-    catch (error) {
-      if (error.message && !error.message.includes('ADMIN_AUTH_REQUIRED')) $('#login-note').textContent = error.message;
-      return;
-    }
-    showApp(admin);
     try { await refresh(); }
-    catch (error) { toast(`Signed in, but the Admin dashboard could not load: ${error.message}`, true); }
+    catch (error) { showLogin(); $('#login-note').textContent = error.message; }
   }
-  async function refresh() { state.data = await api('/api/admin/bootstrap'); if (state.data.categories.length >= 200) state.data.categories = (await api('/api/admin/categories')).categories.filter(row => row.id !== 'all'); if (state.data.deliveryAreas.length >= 200) state.data.deliveryAreas = (await api('/api/admin/delivery-areas')).areas; state.customers = state.data.customers || []; paint(); }
-  async function act(fn, success = 'Saved') { try { await fn(); await refresh(); toast(success); } catch (error) { toast(error.message, true); } }
+  async function refresh() {
+    const sequence = ++state.loadSequence, view = state.view;
+    const url = '/api/admin/bootstrap?' + new URLSearchParams({view, limit:'25',offset:String(state.offset),q:state.query,status:state.status});
+    const data = await api(url);
+    if (sequence !== state.loadSequence || view !== state.view) return;
+    // Selectors search the full catalogue on demand. Preserve configured values.
+    if (['banners','referrals'].includes(view)) {
+      const selectedIds = [...(data.homepageBanners || []).filter(row=>row.action?.type==='product').map(row=>row.action.id), data.referralRewards?.campaign?.freeProductId].filter(Boolean);
+      const missing = selectedIds.filter(id=>!data.products.some(row=>row.id===id));
+      const selected = await Promise.all(missing.map(id=>api('/api/admin/products/'+encodeURIComponent(id)).then(x=>x.product).catch(()=>null)));
+      data.products.push(...selected.filter(Boolean));
+      if (sequence !== state.loadSequence) return;
+    }
+    state.data = data; state.customers = data.customers || []; showApp(data.admin); paint();
+  }
+  function navigate(view) {
+    state.view = view; state.offset = 0; state.query = ''; state.status = 'all';
+    $('#page-title').textContent = view === 'deliveryAreas' ? 'Delivery Areas' : view[0].toUpperCase()+view.slice(1);
+    $('#view').innerHTML = '<p role="status">Loading '+escapeHtml($('#page-title').textContent)+'…</p>';
+    refresh().catch(error=>toast(error.message,true));
+  }
+  async function act(fn, success = 'Saved') {
+    if (state.actionPending) return; state.actionPending = true;
+    try { await fn(); await refresh(); toast(success); } catch (error) { toast(error.message, true); }
+    finally { state.actionPending = false; }
+  }
   function table(headers, rows, empty = 'Nothing to show yet.') { return `<div class="table-wrap"><table class="data-table"><thead><tr>${headers.map(x => `<th>${x}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${headers.length}" class="empty">${empty}</td></tr>`}</tbody></table></div>`; }
   function riderSummaryTable(riders, month, date) { return table(['Rider','Completed · '+escapeHtml(date),'COD · '+escapeHtml(date),'Completed · '+escapeHtml(month),'COD · '+escapeHtml(month)],riders.map(r=>{const s=r.deliverySummary||{};return `<tr><td>${escapeHtml(r.name)}</td><td>${Number(s.dailyCompletedDeliveries||0)}</td><td>${money(s.dailyCodCollected||0)}</td><td>${Number(s.monthCompletedDeliveries||0)}</td><td>${money(s.monthCodCollected||0)}</td></tr>`}).join(''),'No Rider accounts are registered yet.'); }
   function sectionHead(title, desc = '', action = '') { return `<div class="section-head"><div><h2>${title}</h2>${desc ? `<p>${desc}</p>` : ''}</div>${action}</div>`; }
@@ -101,7 +120,7 @@ async function request(url, options = {}) {
       const banners=[...(d.homepageBanners||[])].sort((a,b)=>Number(a.order||0)-Number(b.order||0));
       html=`<form data-form="hero-fruit" class="panel"><h2>Homepage hero fruit graphic</h2><p class="muted">Replace the fruit illustration inside the existing hero artwork. The hero layout, offer mark, text, and Start shopping button remain unchanged.</p>${imageUploader(d.homepageHeroFruitImage||'','Hero fruit image')}<div class="form-actions"><button class="primary">Save hero image</button><button class="small-btn" type="button" data-hero-fruit-reset>Restore built-in avocado</button></div></form><form data-form="banners" class="panel"><h2>Homepage promotional banners</h2><p class="muted">Manage the existing Everyday low prices and Paan Corner artwork, plus other homepage promotions. Changes apply to the Customer homepage only.</p><div data-banner-list>${banners.map((banner,index)=>bannerCard(banner,index)).join('')}</div><div class="form-actions banner-actions"><button class="small-btn" type="button" data-banner-add>Add banner</button><button class="primary">Save banner changes</button></div></form>`;
     } else if (state.view === 'categories') {
-      const rows = d.categories.map(c=>`<tr><td><strong>${escapeHtml(c.name)}</strong><span class="subtext">${escapeHtml(c.id)}</span></td><td>${escapeHtml(c.icon||'')}</td><td>${d.products.filter(p=>p.category===c.id&&p.isActive!==false).length}</td><td><span class="pill ${c.isActive===false?'red':'green'}">${c.isActive===false?'Inactive':'Active'}</span></td><td><div class="row-actions"><button class="small-btn" data-edit="category" data-id="${encodeURIComponent(c.id)}">Edit</button><button class="small-btn" data-toggle="category" data-id="${encodeURIComponent(c.id)}" data-active="${c.isActive===false?'true':'false'}">${c.isActive===false?'Restore':'Deactivate'}</button></div></td></tr>`).join('');
+      const rows = d.categories.map(c=>`<tr><td><strong>${escapeHtml(c.name)}</strong><span class="subtext">${escapeHtml(c.id)}</span></td><td>${escapeHtml(c.icon||'')}</td><td>${c.productCount ?? d.products.filter(p=>p.category===c.id&&p.isActive!==false).length}</td><td><span class="pill ${c.isActive===false?'red':'green'}">${c.isActive===false?'Inactive':'Active'}</span></td><td><div class="row-actions"><button class="small-btn" data-edit="category" data-id="${encodeURIComponent(c.id)}">Edit</button><button class="small-btn" data-toggle="category" data-id="${encodeURIComponent(c.id)}" data-active="${c.isActive===false?'true':'false'}">${c.isActive===false?'Restore':'Deactivate'}</button></div></td></tr>`).join('');
       html = categoryForm() + sectionHead('Categories','Customer browsing reads these same categories') + table(['Category','Icon','Active products','Status','Actions'],rows);
     } else if (state.view === 'deliveryAreas') {
       const rows=(d.deliveryAreas||[]).map(a=>`<tr><td><strong>${escapeHtml(a.name)}</strong>${a.isDemoFallback?'<span class="subtext">Editable demo coverage · replace before real use</span>':''}</td><td>${escapeHtml((a.pinCodes||[]).join(', ')||'—')}</td><td>${money(a.deliveryCharge)}<span class="subtext">Minimum ${money(a.minimumOrder)}</span></td><td>${a.freeDeliveryThreshold==null?'—':money(a.freeDeliveryThreshold)}</td><td>${Number(a.etaMinMinutes)}–${Number(a.etaMaxMinutes)} min</td><td><span class="pill ${a.isActive===false?'red':'green'}">${a.isActive===false?'Disabled':'Enabled'}</span></td><td><div class="row-actions"><button class="small-btn" data-edit="delivery-area" data-id="${encodeURIComponent(a.id)}">Edit</button><button class="small-btn" data-toggle="delivery-area" data-id="${encodeURIComponent(a.id)}" data-active="${a.isActive===false?'true':'false'}">${a.isActive===false?'Enable':'Disable'}</button><button class="small-btn danger" data-delete-area="${encodeURIComponent(a.id)}">Delete</button></div></td></tr>`).join('');
@@ -118,7 +137,7 @@ async function request(url, options = {}) {
     } else if (state.view === 'riders') {
       const rows=d.riders.map(r=>`<tr><td><strong>${escapeHtml(r.name)}</strong><span class="subtext">${escapeHtml(r.phone)} · ${escapeHtml(r.vehicle||'')}</span></td><td>${escapeHtml(r.status)}</td><td><span class="pill ${r.isActive?'green':'red'}">${r.isActive?'Active':'Inactive'}</span><span class="subtext">${r.mustChangePassword?'Password reset required':'Credentials configured'}</span></td><td><button class="small-btn" data-edit="rider" data-id="${encodeURIComponent(r.id)}">Edit</button> <button class="small-btn" data-reset-rider="${encodeURIComponent(r.id)}">Reset password</button> <button class="small-btn" data-toggle="rider" data-id="${encodeURIComponent(r.id)}" data-active="${r.isActive?'false':'true'}">${r.isActive?'Deactivate':'Restore'}</button></td></tr>`).join('');
       const designatedId=d.dispatchSettings?.designatedRiderId||'';
-      const activeRiders=d.riders.filter(r=>r.isActive);
+      const activeRiders=(d.riderChoices||d.riders).filter(r=>r.isActive);
       const currentDate=new Date().toISOString().slice(0,10),currentMonth=currentDate.slice(0,7);
       html = riderForm()+`<form data-form="dispatch-settings" class="panel"><h2>New order dispatch</h2><p class="muted">Unassigned new orders appear only in the designated rider’s inbox. Admins can still assign orders directly to another active rider.</p><div class="form-grid"><label class="field">Designated rider<select name="designatedRiderId"><option value="" ${!designatedId?'selected':''}>No automatic rider · admin assignment only</option>${activeRiders.map(r=>`<option value="${escapeHtml(r.id)}" ${r.id===designatedId?'selected':''}>${escapeHtml(r.name)} · ${escapeHtml(r.phone)}</option>`).join('')}</select></label></div><div class="form-actions"><button class="primary">Save dispatch setting</button></div></form>`+sectionHead('Rider accounts','Availability is reported by Rider app sessions; inactive accounts cannot sign in')+table(['Rider','Availability','Account','Actions'],rows)+sectionHead('Delivery and COD summaries','Completed deliveries and verified COD collections. COD is order money, separate from Rider wages.')+`<div class="toolbar"><label class="field">Summary date<input type="date" data-rider-summary-date value="${currentDate}" max="${currentDate}"></label><label class="field">Summary month<input type="month" data-rider-summary-month value="${currentMonth}"></label></div><div data-rider-summary-table>${riderSummaryTable(d.riders||[],currentMonth,currentDate)}</div>`;
     } else if (state.view === 'referrals') {
@@ -139,7 +158,15 @@ async function request(url, options = {}) {
       const logRows=(nc.deliveryLogs||[]).slice(0,80).map(l=>`<tr><td>${new Date(l.attemptedAt).toLocaleString()}</td><td>${escapeHtml(l.ownerType)} · ${escapeHtml(l.ownerId)}</td><td>${escapeHtml(l.status)}</td><td>${escapeHtml(l.errorCode||l.providerMessageId||'—')}</td></tr>`).join('');
       html = `<section class="panel notification-status"><h2>Push configuration</h2><p>Web client: <strong>${nc.config?.webConfigured?'configured':'not configured'}</strong> · FCM project ID: <strong>${nc.config?.serverConfigured?'configured':'missing'}</strong> · Active browser registrations: ${Number(nc.devices?.customer||0)} customer, ${Number(nc.devices?.rider||0)} rider, ${Number(nc.devices?.admin||0)} admin.</p><p class="muted">Backend credentials are validated only when sending. FCM acceptance means the provider accepted a message; it does not prove the device displayed or read it. Push requires HTTPS and Firebase credentials.</p><button class="small-btn" data-action="enable-admin-push">Enable alerts on this Admin browser</button> <button class="small-btn" data-action="test-admin-push">Send test to this browser</button></section><form data-form="notification-campaign" class="panel"><h2>Notification campaign</h2><p class="muted">In-app messages are stored locally. Push is queued only for opted-in owners with an active browser registration.</p><div class="form-grid"><label class="field">Recipient group<select name="targetType">${targetOptions}</select></label><label class="field">Customer, rider, or area<select name="targetId"><option value="">Choose if required</option>${entityOptions}</select></label><label class="field">Category<select name="category"><option value="announcements">Announcement</option><option value="promotions">Promotion (opt-in only)</option><option value="order_updates">Order updates</option><option value="payments">Payments</option><option value="referrals_rewards">Referrals & rewards</option></select></label><label class="field">Channel<select name="channel"><option value="in_app">In-app only</option><option value="both">In-app + browser push</option><option value="push">Browser push only</option></select></label>${field('Title','title','','text',{required:true})}<label class="field full">Message<textarea name="message" rows="3" required maxlength="400"></textarea></label><article class="campaign-preview full" data-campaign-preview><strong>Notification preview</strong><p>Title and message preview appear here.</p></article><label class="field">Open after tap<select name="destination"><option value="/#home">Home</option><option value="/#orders">Orders</option><option value="/#notifications">Notifications</option><option value="/#referrals">Referrals</option><option value="/rider">Rider app</option></select></label><label class="field">Schedule (optional)<input name="scheduledAt" type="datetime-local"></label><label class="field check-field"><input name="confirmLargeAudience" type="checkbox"> Confirm if audience exceeds 50 accounts</label></div><p class="muted" data-audience-estimate>Use “Estimate audience” before queueing.</p><div class="form-actions"><button type="button" class="secondary" data-action="estimate-notification">Estimate audience</button><button class="primary">Queue notification</button></div></form>`+sectionHead('Campaign history','Queue/schedule status and FCM provider acceptance')+table(['Campaign','Status','Delivery','Actions'],campaignRows)+sectionHead('Campaign audit details','Account IDs are shown only to the signed-in administrator; provider acceptance is not a device receipt.')+table(['Campaign','Created by','Created / scheduled','Processed / cancelled','Attempts','Failure'],(nc.campaigns||[]).map(c=>`<tr><td>${escapeHtml(c.title)}<span class="subtext">${escapeHtml(c.target?.type||'')} · ${escapeHtml(c.channel)}</span></td><td>${escapeHtml(c.createdBy||'')}</td><td>${c.scheduledAt?new Date(c.scheduledAt).toLocaleString():new Date(c.createdAt).toLocaleString()}</td><td>${c.processedAt?new Date(c.processedAt).toLocaleString():'Not processed'}${c.cancelledAt?`<span class="subtext">Cancelled by ${escapeHtml(c.cancelledBy||'unknown')} · ${new Date(c.cancelledAt).toLocaleString()}</span>`:''}</td><td>${Number(c.attemptCount||0)} · ${Number(c.acceptedCount||0)} accepted · ${Number(c.failedCount||0)} failed</td><td>${escapeHtml(c.error||'—')}</td></tr>`).join(''))+sectionHead('Event template controls','Disable event classes or channels without changing the order workflow')+table(['Event','Enabled','In-app','Push'],templateRows)+sectionHead('Recent push delivery attempts','Device identifiers and FIDs are never shown here')+table(['Attempted','Recipient','Result','Provider detail'],logRows);
     }
-    $('#view').innerHTML = html;
+    const active = document.activeElement, focusSearch = active?.matches('[data-filter]'), position = active?.selectionStart;
+    const total = Number(d.total || 0), paging = state.view !== 'overview' && d.total !== undefined;
+    $('#view').innerHTML = html + (paging ? '<nav class="toolbar" aria-label="Result pages"><button class="small-btn" data-page="previous" '+(state.offset===0?'disabled':'')+'>Previous</button><span>'+ (total ? state.offset+1 : 0) +'–'+Math.min(state.offset+25,total)+' of '+total+'</span><button class="small-btn" data-page="next" '+(state.offset+25>=total?'disabled':'')+'>Next</button></nav>' : '');
+    const search = $('#view [data-filter]'); if (search) { search.value = state.query; if (focusSearch) {search.focus();search.setSelectionRange(position,position);} }
+    const status = $('#view [data-customer-status]'); if(status)status.value=state.status;
+    $('#view').querySelectorAll('select[name="freeProductId"], [data-banner-target] select, select[name="targetId"], select[name="designatedRiderId"]').forEach(select => {
+      if (select.closest('[data-banner-target]') && select.closest('[data-banner-card]').querySelector('[data-banner-action]')?.value !== 'product') return;
+      const input=document.createElement('input'); input.type='search'; input.placeholder='Search choices'; input.dataset.lookup='1'; input.setAttribute('aria-label','Search all choices'); select.before(input);
+    });
   }
   function editorFields(title, items, saveFn) {
     $('#editor-title').textContent = title; const box = $('#editor-fields'); box.innerHTML = items.map(item => item.html).join(''); $('#editor-save').classList.remove('hidden');
@@ -167,7 +194,7 @@ async function request(url, options = {}) {
   async function showCustomer(id){
     $('#editor-title').textContent='Customer profile';$('#editor-save').classList.add('hidden');$('#editor-fields').innerHTML='<p class="customer-loading">Loading customer profile…</p>';editor.showModal();
     try {
-      const data=await api(`/api/admin/customers/${encodeURIComponent(id)}`),{customer,addresses,orders,coupons,eligibleCoupons,audit}=data;state.customerProfile=data;state.customerProfileId=id;
+      const data=await allPages(`/api/admin/customers/${encodeURIComponent(id)}`),{customer,addresses,orders,coupons,eligibleCoupons,audit}=data;state.customerProfile=data;state.customerProfileId=id;
       const tabs=['overview','addresses','orders','coupons'];
       const addressRows=addresses.map(a=>`<article class="customer-record"><strong>${escapeHtml(a.label||'Address')}${a.isDefault?' <span class="pill green">Default</span>':''}</strong><span>${escapeHtml(a.recipientName||'')} · ${escapeHtml([a.phone,a.line1,a.line2,a.landmark,a.city].filter(Boolean).join(', '))}</span><small>Delivery area: ${escapeHtml(a.deliveryAreaName||(a.deliveryAreaUnavailable?'Unavailable':'Not selected'))}</small></article>`).join('')||'<p class="empty">No saved addresses.</p>';
       const orderRows=orders.map(o=>`<tr><td><button class="link-button" data-profile-order="${encodeURIComponent(o.id)}">${escapeHtml(o.displayId)}</button><span class="subtext">${new Date(o.createdAt).toLocaleString()}</span><span class="subtext">${(o.items||[]).map(i=>`${escapeHtml(i.name)}${i.variantLabel ? ` &middot; ${escapeHtml(i.variantLabel)}` : ''} &times; ${Number(i.quantity||0)} &middot; ${money(i.lineTotal)}`).join(', ')}</span></td><td>${escapeHtml(o.status)}<span class="subtext">${escapeHtml(o.paymentMethod||'')} · ${escapeHtml(o.paymentStatus||'')}</span></td><td>${money(o.subtotal)}<span class="subtext">Discount ${money(o.discount)} · Delivery ${money(o.delivery)}</span></td><td><strong>${money(o.total)}</strong><span class="subtext">${escapeHtml(o.deliveryArea?.name||o.address?.deliveryAreaName||'Area unavailable')} · ${escapeHtml([o.address?.line1,o.address?.line2,o.address?.city].filter(Boolean).join(', '))}</span>${o.couponCode?`<span class="subtext">Coupon ${escapeHtml(o.couponCode)} · applied ${money(o.discount)}</span>`:''}</td></tr>`).join('');
@@ -206,8 +233,8 @@ async function request(url, options = {}) {
       if (button?.isConnected) { button.disabled = false; button.textContent = originalLabel; }
     }
   });
-  $('#logout').addEventListener('click',async()=>{try{await import('/push-client.js').then(push=>push.deactivateWebPush('admin'));}catch{}try{await post('/api/admin/auth/logout',{});}finally{showLogin();}});
-  $('#nav').addEventListener('click',e=>{const button=e.target.closest('[data-view]');if(button){state.view=button.dataset.view;paint();}});
+  $('#logout').addEventListener('click',async()=>{try{await post('/api/admin/auth/logout',{deviceKey:localStorage.getItem('zepto.push.device')||''});}finally{showLogin();}});
+  $('#nav').addEventListener('click',e=>{const button=e.target.closest('[data-view]');if(button){navigate(button.dataset.view);}});
   document.addEventListener('change',e=>{if(e.target.matches('[data-upload-input]')&&e.target.files?.[0])uploadImageFile(e.target.files[0],e.target.closest('[data-image-uploader]'));if(e.target.matches('[data-banner-action]')){const card=e.target.closest('[data-banner-card]'),type=e.target.value,target=card.querySelector('[data-banner-target]');target.hidden=!['product','category'].includes(type);const select=target.querySelector('select');if(select){const list=type==='category'?state.data.categories.filter(row=>row.id!=='all'&&row.isActive!==false):state.data.products.filter(row=>row.isActive!==false);select.innerHTML=`<option value="">Choose ${type}</option>${list.map(row=>`<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}</option>`).join('')}`;target.firstChild.textContent=type==='category'?'Category':'Product';}card.querySelector('[data-banner-page]').hidden=type!=='page';card.querySelector('[data-banner-url]').hidden=type!=='external';}});
   document.addEventListener('dragover',e=>{if(e.target.closest('[data-image-uploader]'))e.preventDefault();});
   document.addEventListener('drop',e=>{const widget=e.target.closest('[data-image-uploader]');if(!widget)return;e.preventDefault();if(e.dataTransfer?.files?.[0])uploadImageFile(e.dataTransfer.files[0],widget);});
@@ -233,7 +260,7 @@ async function request(url, options = {}) {
     if(action==='estimate-notification'){const form=$('[data-form="notification-campaign"]'),value=Object.fromEntries(new FormData(form).entries()),target=adminNotificationTarget(value);try{const result=await post('/api/admin/notifications/estimate',{target,category:value.category});form.querySelector('[data-audience-estimate]').textContent=`${result.eligibleRecipients} eligible recipient(s) · maximum ${result.maximumRecipients}${result.largeCampaignConfirmationRequired?' · explicit confirmation required':''}`;}catch(error){form.querySelector('[data-audience-estimate]').textContent=error.message;}return;}
     const cancelCampaign=e.target.closest('[data-cancel-campaign]');if(cancelCampaign){await act(()=>post(`/api/admin/notifications/campaigns/${encodeURIComponent(cancelCampaign.dataset.cancelCampaign)}/cancel`,{}),'Campaign cancelled');return;}
     const duplicateCampaign=e.target.closest('[data-duplicate-campaign]');if(duplicateCampaign){try{const result=await post(`/api/admin/notifications/campaigns/${encodeURIComponent(duplicateCampaign.dataset.duplicateCampaign)}/duplicate`,{});await refresh();state.view='notifications';paint();const form=$('[data-form="notification-campaign"]');if(form&&result.campaign){for(const [key,val] of Object.entries({title:`Copy: ${result.campaign.title}`,message:result.campaign.message,category:result.campaign.category,channel:result.campaign.channel}))if(form.elements[key])form.elements[key].value=val;const t=result.campaign.target||{};if(form.elements.targetType)form.elements.targetType.value=t.type||'all_customers';if(form.elements.targetId)form.elements.targetId.value=t.id||t.areaId||'';}toast('Campaign copied into a new draft. Review its audience and queue it when ready.');}catch(error){toast(error.message,true);}return;}
-    const go=e.target.closest('[data-go]');if(go){state.view=go.dataset.go;paint();return;}
+    const go=e.target.closest('[data-go]');if(go){navigate(go.dataset.go);return;}
     const edit=e.target.closest('[data-edit]');if(edit){editRecord(edit.dataset.edit,decodeURIComponent(edit.dataset.id));return;}
     const toggle=e.target.closest('[data-toggle]');if(toggle){const {toggle:type,id,active}=toggle.dataset;const decoded=decodeURIComponent(id);const activeValue=active==='true';const urls={product:`/api/admin/products/${encodeURIComponent(decoded)}`,category:`/api/admin/categories/${encodeURIComponent(decoded)}`,coupon:`/api/admin/coupons/${encodeURIComponent(decoded)}`,rider:`/api/admin/riders/${encodeURIComponent(decoded)}`,'delivery-area':`/api/admin/delivery-areas/${encodeURIComponent(decoded)}`};await act(()=>patch(urls[type],{isActive:activeValue}),activeValue?'Enabled':'Disabled');return;}
     const deleteArea=e.target.closest('[data-delete-area]');if(deleteArea){const id=decodeURIComponent(deleteArea.dataset.deleteArea);if(!confirm('Delete this delivery area? Existing orders retain their saved area and delivery charge.'))return;await act(()=>api(`/api/admin/delivery-areas/${encodeURIComponent(id)}`,{method:'DELETE'}),'Delivery area deleted');return;}
@@ -249,9 +276,27 @@ async function request(url, options = {}) {
   function updateCampaignPreview(form){const title=form.elements.title.value.trim()||'Notification title';const message=form.elements.message.value.trim()||'Your notification message will appear here.';const box=form.querySelector('[data-campaign-preview]');if(box)box.innerHTML=`<strong>${escapeHtml(title)}</strong><p>${escapeHtml(message)}</p><small>Zepto · notification</small>`;}
   $('#view').addEventListener('input',e=>{const form=e.target.closest('[data-form="notification-campaign"]');if(form)updateCampaignPreview(form);});
   $('#view').addEventListener('change',async e=>{const monthInput=e.target.closest('[data-rider-summary-month]'),dateInput=e.target.closest('[data-rider-summary-date]');if(monthInput||dateInput){try{const month=monthInput?.value||$('#view [data-rider-summary-month]').value,date=dateInput?.value||$('#view [data-rider-summary-date]').value;const result=await api(`/api/admin/rider-delivery-summaries?month=${encodeURIComponent(month)}&date=${encodeURIComponent(date)}`);const riders=(state.data.riders||[]).map(r=>({...r,deliverySummary:result.riders.find(row=>row.id===r.id)?.deliverySummary||{}}));$('[data-rider-summary-table]').innerHTML=riderSummaryTable(riders,result.month,result.date);}catch(error){toast(error.message,true);}return;}const input=e.target.closest('[data-template]');if(!input)return;try{await patch(`/api/admin/notifications/templates/${encodeURIComponent(input.dataset.template)}`,{[input.dataset.templateKey]:input.checked});toast('Notification template updated');await refresh();}catch(error){input.checked=!input.checked;toast(error.message,true);}});
-  function filterCustomers(){const query=$('#view [data-customer-search]')?.value.trim().toLowerCase()||'',status=$('#view [data-customer-status]')?.value||'all';document.querySelectorAll('#view .data-table tbody tr[data-search]').forEach(row=>{row.hidden=(Boolean(query)&&!row.dataset.search.includes(query))||(status!=='all'&&row.dataset.status!==status);});}
-  $('#view').addEventListener('input', e => { if(e.target.matches('[data-customer-search]'))return filterCustomers();if (!e.target.matches('[data-filter]')) return; const query=e.target.value.trim().toLowerCase(); document.querySelectorAll('#view .data-table tbody tr').forEach(row=>{row.hidden=Boolean(query)&&!row.textContent.toLowerCase().includes(query);}); });
-  $('#view').addEventListener('change',e=>{if(e.target.matches('[data-customer-status]'))filterCustomers();});
+  let searchTimer;
+  $('#view').addEventListener('input', e => {
+    if (e.target.matches('[data-lookup]')) {
+      const input=e.target,select=input.nextElementSibling;
+      clearTimeout(input.lookupTimer);
+      input.lookupTimer=setTimeout(async()=>{
+        const term=input.value, targetType=select.closest('form')?.elements.targetType?.value;
+        const route=select.name==='designatedRiderId' ? 'riders' : select.name==='targetId' ? targetType==='customer' ? 'customers' : targetType==='rider' ? 'riders' : 'delivery-areas' : 'products';
+        try { const result=await api('/api/admin/'+route+'?limit=25&q='+encodeURIComponent(term)); if(!input.isConnected||input.value!==term)return;
+          const rows=result.products||result.customers||result.riders||result.areas||[], chosen=select.selectedOptions[0]?.cloneNode(true);
+          select.replaceChildren(new Option('Choose a result',''),...(chosen?.value?[chosen]:[]),...rows.filter(row=>row.id!==chosen?.value).map(row=>new Option(row.name||row.phone||row.id,row.id)));
+          if(chosen?.value)select.value=chosen.value;
+        }catch(error){toast(error.message,true);}
+      },250); return;
+    }
+    if(!e.target.matches('[data-filter]'))return;
+    state.query=e.target.value.trim(); state.offset=0; clearTimeout(searchTimer);
+    searchTimer=setTimeout(()=>refresh().catch(error=>toast(error.message,true)),250);
+  });
+  $('#view').addEventListener('change',e=>{if(e.target.matches('[data-customer-status]')){state.status=e.target.value;state.offset=0;refresh().catch(error=>toast(error.message,true));}});
+  $('#view').addEventListener('click',e=>{const page=e.target.closest('[data-page]');if(!page||page.disabled)return;state.offset=Math.max(0,state.offset+(page.dataset.page==='next'?25:-25));refresh().catch(error=>toast(error.message,true));});
   $('#view').addEventListener('submit',async e=>{const form=e.target.closest('[data-form]');if(!form)return;e.preventDefault();const value=Object.fromEntries(new FormData(form).entries());try{
     if(form.dataset.form==='product'){value.measurementUnit=form.elements.measurementUnit.value;value.variants=collectPricingVariants(form);await post('/api/admin/products',value);toast('Product added to shared catalog');}
     if(form.dataset.form==='hero-fruit'){const image=form.querySelector('[data-image-value]').value||null;await patch('/api/admin/hero-fruit',{image});toast(image?'Homepage hero fruit image saved':'Built-in avocado restored');}
@@ -266,8 +311,8 @@ async function request(url, options = {}) {
     await refresh();
   }catch(error){toast(error.message,true);}});
   window.setInterval(() => {
-    if (app.classList.contains('hidden') || document.hidden || editor.open || $('#view').querySelector('form:focus-within')) return;
+    if (!['overview','orders'].includes(state.view) || app.classList.contains('hidden') || document.hidden || editor.open || $('#view').querySelector('form:focus-within')) return;
     refresh().catch(() => {});
-  }, 6000);
+  }, 30000);
   init().catch(error=>toast(error.message,true));
 })();

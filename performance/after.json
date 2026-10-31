@@ -1,0 +1,496 @@
+{
+  "label": "after",
+  "measuredAt": "2026-10-31T04:37:57.877Z",
+  "environment": "Local Node process to the existing configured MongoDB; not deployed HTTP timings",
+  "database": "purainamart",
+  "repetitions": 5,
+  "routes": {
+    "/api/bootstrap": {
+      "medianMs": 640.57,
+      "minMs": 606.24,
+      "maxMs": 786.54,
+      "queryCounts": [
+        16,
+        16,
+        16,
+        16,
+        16
+      ],
+      "databaseCommandMs": {
+        "medianMs": 1662,
+        "minMs": 1503,
+        "maxMs": 1739
+      },
+      "responseBytes": 5623
+    },
+    "/api/bootstrap?compact=1&limit=24": {
+      "medianMs": 291.27,
+      "minMs": 285.55,
+      "maxMs": 327.64,
+      "queryCounts": [
+        14,
+        14,
+        14,
+        14,
+        14
+      ],
+      "databaseCommandMs": {
+        "medianMs": 1461,
+        "minMs": 1398,
+        "maxMs": 1495
+      },
+      "responseBytes": 5622
+    },
+    "/api/products?limit=24": {
+      "medianMs": 99.54,
+      "minMs": 96.13,
+      "maxMs": 101.96,
+      "queryCounts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "databaseCommandMs": {
+        "medianMs": 189,
+        "minMs": 183,
+        "maxMs": 200
+      },
+      "responseBytes": 1682
+    },
+    "/api/cart": {
+      "medianMs": 278.42,
+      "minMs": 269.82,
+      "maxMs": 283.37,
+      "queryCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "databaseCommandMs": {
+        "medianMs": 456,
+        "minMs": 428,
+        "maxMs": 470
+      },
+      "responseBytes": 1332
+    },
+    "/api/orders?limit=20": {
+      "medianMs": 112.05,
+      "minMs": 89.9,
+      "maxMs": 120.59,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 111,
+        "minMs": 87,
+        "maxMs": 119
+      },
+      "responseBytes": 13
+    },
+    "/api/addresses": {
+      "medianMs": 104.54,
+      "minMs": 86.37,
+      "maxMs": 127.58,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 102,
+        "minMs": 85,
+        "maxMs": 126
+      },
+      "responseBytes": 16
+    },
+    "/api/coupons": {
+      "medianMs": 94.74,
+      "minMs": 88.75,
+      "maxMs": 98.92,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 94,
+        "minMs": 88,
+        "maxMs": 98
+      },
+      "responseBytes": 14
+    },
+    "/api/admin/bootstrap": {
+      "medianMs": 1020.91,
+      "minMs": 592.65,
+      "maxMs": 1096.33,
+      "queryCounts": [
+        37,
+        37,
+        37,
+        37,
+        37
+      ],
+      "databaseCommandMs": {
+        "medianMs": 3826,
+        "minMs": 3605,
+        "maxMs": 4255
+      },
+      "responseBytes": 15898
+    },
+    "/api/admin/bootstrap?view=overview&limit=25": {
+      "medianMs": 298.91,
+      "minMs": 292.33,
+      "maxMs": 319.7,
+      "queryCounts": [
+        11,
+        11,
+        11,
+        11,
+        11
+      ],
+      "databaseCommandMs": {
+        "medianMs": 1065,
+        "minMs": 1033,
+        "maxMs": 1129
+      },
+      "responseBytes": 4855
+    },
+    "/api/admin/products?limit=25": {
+      "medianMs": 93.19,
+      "minMs": 82.09,
+      "maxMs": 106.38,
+      "queryCounts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "databaseCommandMs": {
+        "medianMs": 181,
+        "minMs": 159,
+        "maxMs": 209
+      },
+      "responseBytes": 1660
+    },
+    "/api/admin/customers?limit=25": {
+      "medianMs": 195.48,
+      "minMs": 184.87,
+      "maxMs": 203.44,
+      "queryCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "databaseCommandMs": {
+        "medianMs": 480,
+        "minMs": 454,
+        "maxMs": 496
+      },
+      "responseBytes": 657
+    },
+    "/api/rider/bootstrap?limit=20": {
+      "medianMs": 199.97,
+      "minMs": 196.88,
+      "maxMs": 219.21,
+      "queryCounts": [
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "databaseCommandMs": {
+        "medianMs": 728,
+        "minMs": 661,
+        "maxMs": 779
+      },
+      "responseBytes": 2722
+    },
+    "cart-add-rollback": {
+      "medianMs": 581.44,
+      "minMs": 550.5,
+      "maxMs": 586.87,
+      "queryCounts": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "aborted": true
+    },
+    "cart-quantity-rollback": {
+      "medianMs": 571.02,
+      "minMs": 535.35,
+      "maxMs": 590.83,
+      "queryCounts": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "aborted": true
+    },
+    "cart-compact-rollback": {
+      "medianMs": 500.34,
+      "minMs": 490.84,
+      "maxMs": 508,
+      "queryCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "aborted": true
+    }
+  },
+  "queries": {
+    "catalogue": {
+      "executionTimeMillis": 0,
+      "returned": 2,
+      "documentsExamined": 2,
+      "keysExamined": 2,
+      "stages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "index": "products_catalogue_order"
+        }
+      ]
+    },
+    "admin-products": {
+      "executionTimeMillis": 0,
+      "returned": 2,
+      "documentsExamined": 2,
+      "keysExamined": 2,
+      "stages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "index": "products_admin_page"
+        }
+      ]
+    },
+    "customer-orders": {
+      "executionTimeMillis": 0,
+      "returned": 0,
+      "documentsExamined": 0,
+      "keysExamined": 0,
+      "stages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "index": "orders_customer_page"
+        }
+      ]
+    }
+  },
+  "assets": {
+    "app.js": {
+      "bytes": 118383,
+      "gzipBytes": 29389,
+      "brotliBytes": 24476
+    },
+    "admin.js": {
+      "bytes": 84021,
+      "gzipBytes": 22043,
+      "brotliBytes": 18886
+    },
+    "rider-app.js": {
+      "bytes": 31502,
+      "gzipBytes": 9033,
+      "brotliBytes": 7728
+    },
+    "styles.css": {
+      "bytes": 68961,
+      "gzipBytes": 15148,
+      "brotliBytes": 13168
+    },
+    "puraina-commerce.css": {
+      "bytes": 16165,
+      "gzipBytes": 3757,
+      "brotliBytes": 3194
+    },
+    "index.html": {
+      "bytes": 3248,
+      "gzipBytes": 1164,
+      "brotliBytes": 876
+    },
+    "account-views.js": {
+      "bytes": 31091,
+      "gzipBytes": 7797,
+      "brotliBytes": 6685
+    },
+    "api-client.js": {
+      "bytes": 1305,
+      "gzipBytes": 620,
+      "brotliBytes": 540
+    },
+    "cart-controller.js": {
+      "bytes": 5360,
+      "gzipBytes": 1806,
+      "brotliBytes": 1563
+    }
+  },
+  "source": {
+    "revision": "Modified working tree",
+    "indexes": "Current installed indexes"
+  },
+  "connectAndPingMs": 1029.87,
+  "available": {
+    "customer": true,
+    "admin": true,
+    "rider": true,
+    "product": true
+  },
+  "databaseSafety": {
+    "unchanged": true,
+    "collections": 28,
+    "snapshot": {
+      "addresses": {
+        "count": 1,
+        "sha256": "09f80540918e3e4a80e3638c9ac3338f43029c6fce9ea80a29471b33df693328"
+      },
+      "adminAuditLog": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "admins": {
+        "count": 1,
+        "sha256": "2febd6a0d08fe0dea556827909a345c4482fa8bae9cb0b475e0dcce09fe4b9f3"
+      },
+      "authAttempts": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "carts": {
+        "count": 3,
+        "sha256": "d506a493182b776b110c7f4f8fa578ef1a199412fe6c51e8a6b6afe48975a50f"
+      },
+      "categories": {
+        "count": 1,
+        "sha256": "e48ec6849dd20281fffca4952589eae7feb5841582f2746606cd9065426cec08"
+      },
+      "couponRedemptions": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "coupons": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "deliveryAreas": {
+        "count": 1,
+        "sha256": "c1bae64e027245662a2f63c917b888a018d066123a1f6f039b159e6dd2194cd6"
+      },
+      "notificationCampaigns": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notificationDeliveryLogs": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notificationDevices": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notificationEvents": {
+        "count": 10,
+        "sha256": "510d4e58789fd9dc56641d4f40cd7c8b68386eb8c08f95da4d26ee9b593c6edd"
+      },
+      "notificationOutbox": {
+        "count": 10,
+        "sha256": "0d5661add8c002fb9fec112ba838707103e50dbb7ed05bfce64460603cf3c350"
+      },
+      "notificationPreferences": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notifications": {
+        "count": 8,
+        "sha256": "e6d1716da2c763b997248c6fef012f328f56608ee89bebd53831bb034bb9c831"
+      },
+      "orders": {
+        "count": 1,
+        "sha256": "707b8b654c378184146916ae20a8e936b13c87fb4df45d3e2fb799bd389572c8"
+      },
+      "products": {
+        "count": 2,
+        "sha256": "6bb685d69b90ab0cb9080422fde8dde735ed60d421e8df463f75281b375ad91a"
+      },
+      "referralEvents": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "referrals": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "rewards": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "riderNotifications": {
+        "count": 2,
+        "sha256": "ea37df7868abfd6c33480b2aa8180d765aae60280f6c8f8129378a8e5b8f10e6"
+      },
+      "riders": {
+        "count": 1,
+        "sha256": "b48755ddeadc763c94b6de18fdb5f284bfb3c98a2c2f5e2ae4d897d341ff2cf1"
+      },
+      "sessions": {
+        "count": 3,
+        "sha256": "630351bd900e00ee4f6c7ac460d7863668a022ea697dcb4ca5633d708e2ed299"
+      },
+      "settings": {
+        "count": 1,
+        "sha256": "b862269b542de99c7533ff95871a979c2ff569efc00b6f6f9cf85961783feda5"
+      },
+      "shoppingPreferences": {
+        "count": 1,
+        "sha256": "c4d969824e8458400121de7d582e62131bf013bd830c67f7a64b925b663c89b1"
+      },
+      "users": {
+        "count": 2,
+        "sha256": "0d1c82c3ee6a5ff51fdb0d39024a09bda8c9895d6fdaa01255ffa8fbba7fdd75"
+      },
+      "wishlists": {
+        "count": 1,
+        "sha256": "a77e82442ab8524bebcc31c942030c71d7b8c96adf5224347dd7c83f3cdafef3"
+      }
+    }
+  }
+}

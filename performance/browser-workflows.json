@@ -1,0 +1,95 @@
+{
+  "measuredAt": "2026-10-31T04:44:13.295Z",
+  "environment": "Headless Edge at 390x844 plus 360px and 768px responsive checks; synthetic local fixture; delayed cart transport; no live database writes",
+  "checks": [
+    "Logged-in refresh never renders Sign in",
+    "One centralized bootstrap request restores the customer",
+    "Homepage loose ADD paints immediately, becomes a stepper and does not navigate",
+    "Rapid clicks coalesce and concurrent products retain correct quantities",
+    "Injected server failure rolls back and reconciles the optimistic cart",
+    "Cart persists through a page refresh",
+    "Cart decrease to zero removes the line",
+    "Offers and coupon application work with deferred route code",
+    "COD checkout, double-click suppression, order success and inventory deduction",
+    "Account, orders, notifications, referrals, wishlist and product deep links render",
+    "Customer catalogue exposes subsequent pages without downloading every product",
+    "Search results outside bootstrap can be added to cart",
+    "All eleven admin screens load without unrelated bootstrap data",
+    "Admin product pagination works",
+    "Admin search queries records outside the displayed page",
+    "Admin password login restores the scoped dashboard",
+    "Admin mobile order controls advance packing and ready-for-pickup",
+    "Rider session, orders, earnings, profile and home navigation",
+    "Rider mobile review, acceptance, pickup, cash gate, COD collection, delivery and earnings",
+    "Rapid rider pagination renders the latest requested page",
+    "Customer, admin and rider pages fit 360px, 390px and 768px viewports",
+    "Logged-out refresh resolves to Sign in after initialization"
+  ],
+  "measurements": {
+    "addVisual": {
+      "ms": 4.3999999994412065,
+      "badge": "1",
+      "path": "/",
+      "stepper": true
+    },
+    "burstRequests": 3
+  },
+  "layouts": [
+    {
+      "role": "customer",
+      "width": 360,
+      "viewport": 360,
+      "content": 360
+    },
+    {
+      "role": "admin",
+      "width": 360,
+      "viewport": 360,
+      "content": 360
+    },
+    {
+      "role": "rider",
+      "width": 360,
+      "viewport": 360,
+      "content": 360
+    },
+    {
+      "role": "customer",
+      "width": 390,
+      "viewport": 390,
+      "content": 390
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "viewport": 390,
+      "content": 390
+    },
+    {
+      "role": "rider",
+      "width": 390,
+      "viewport": 390,
+      "content": 390
+    },
+    {
+      "role": "customer",
+      "width": 768,
+      "viewport": 768,
+      "content": 768
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "viewport": 768,
+      "content": 768
+    },
+    {
+      "role": "rider",
+      "width": 768,
+      "viewport": 768,
+      "content": 768
+    }
+  ],
+  "errors": [],
+  "failedRequests": []
+}

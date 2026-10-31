@@ -1,0 +1,20 @@
+{
+  "environment": "Existing configured MongoDB; real handlers; one explicitly aborted transaction",
+  "checks": [
+    "Real session restoration, cart writes, authoritative pricing and selected delivery area",
+    "COD order creation ignores client price/total and atomically deducts real stock",
+    "Checkout replay creates one order and does not deduct stock twice",
+    "Admin preparation, rider acceptance, pickup, COD collection and delivery",
+    "Outer transaction explicitly aborted",
+    "Verified no audit order, address, session or notification survived; stock unchanged"
+  ],
+  "timings": {
+    "customer:POST:/api/cart/items": 959,
+    "customer:GET:/api/cart": 789,
+    "customer:POST:/api/orders": 827,
+    "admin:PATCH:/api/admin/orders/:order/status": 2267,
+    "rider:POST:/api/rider/orders/:order/accept": 1868,
+    "rider:POST:/api/rider/orders/:order": 1243,
+    "rider:POST:/api/rider/orders/:order/payment": 1121
+  }
+}

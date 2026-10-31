@@ -1,0 +1,328 @@
+{
+  "label": "after",
+  "measuredAt": "2026-10-31T03:41:58.606Z",
+  "environment": "Local Node process to the existing configured MongoDB; not deployed HTTP timings",
+  "database": "purainamart",
+  "repetitions": 5,
+  "routes": {
+    "/api/bootstrap": {
+      "medianMs": 601.27,
+      "minMs": 567.14,
+      "maxMs": 799.08,
+      "queryCounts": [
+        16,
+        16,
+        16,
+        16,
+        16
+      ],
+      "databaseCommandMs": {
+        "medianMs": 1516,
+        "minMs": 1447,
+        "maxMs": 1876
+      },
+      "responseBytes": 5623
+    },
+    "/api/products?limit=24": {
+      "medianMs": 84.05,
+      "minMs": 81.1,
+      "maxMs": 98.29,
+      "queryCounts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "databaseCommandMs": {
+        "medianMs": 163,
+        "minMs": 156,
+        "maxMs": 191
+      },
+      "responseBytes": 1682
+    },
+    "/api/cart": {
+      "medianMs": 284.36,
+      "minMs": 262.16,
+      "maxMs": 319.5,
+      "queryCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "databaseCommandMs": {
+        "medianMs": 454,
+        "minMs": 420,
+        "maxMs": 486
+      },
+      "responseBytes": 1332
+    },
+    "/api/orders?limit=20": {
+      "medianMs": 88.83,
+      "minMs": 85.51,
+      "maxMs": 98.06,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 88,
+        "minMs": 84,
+        "maxMs": 97
+      },
+      "responseBytes": 13
+    },
+    "/api/addresses": {
+      "medianMs": 92.21,
+      "minMs": 85.4,
+      "maxMs": 95.14,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 91,
+        "minMs": 85,
+        "maxMs": 95
+      },
+      "responseBytes": 16
+    },
+    "/api/coupons": {
+      "medianMs": 88.66,
+      "minMs": 82.08,
+      "maxMs": 101,
+      "queryCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "databaseCommandMs": {
+        "medianMs": 88,
+        "minMs": 81,
+        "maxMs": 101
+      },
+      "responseBytes": 14
+    },
+    "/api/admin/bootstrap": {
+      "medianMs": 789.64,
+      "minMs": 564,
+      "maxMs": 1093.67,
+      "queryCounts": [
+        37,
+        37,
+        37,
+        37,
+        37
+      ],
+      "databaseCommandMs": {
+        "medianMs": 3698,
+        "minMs": 3598,
+        "maxMs": 3875
+      },
+      "responseBytes": 15898
+    },
+    "/api/admin/bootstrap?view=overview&limit=25": {
+      "medianMs": 276.69,
+      "minMs": 267.67,
+      "maxMs": 331.48,
+      "queryCounts": [
+        11,
+        11,
+        11,
+        11,
+        11
+      ],
+      "databaseCommandMs": {
+        "medianMs": 1003,
+        "minMs": 948,
+        "maxMs": 1120
+      },
+      "responseBytes": 4855
+    },
+    "/api/admin/products?limit=25": {
+      "medianMs": 95.5,
+      "minMs": 89.37,
+      "maxMs": 105.08,
+      "queryCounts": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "databaseCommandMs": {
+        "medianMs": 184,
+        "minMs": 170,
+        "maxMs": 188
+      },
+      "responseBytes": 1660
+    },
+    "/api/admin/customers?limit=25": {
+      "medianMs": 183.12,
+      "minMs": 179.62,
+      "maxMs": 189.69,
+      "queryCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "databaseCommandMs": {
+        "medianMs": 441,
+        "minMs": 426,
+        "maxMs": 458
+      },
+      "responseBytes": 657
+    },
+    "/api/rider/bootstrap?limit=20": {
+      "medianMs": 188.7,
+      "minMs": 173,
+      "maxMs": 209.7,
+      "queryCounts": [
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "databaseCommandMs": {
+        "medianMs": 637,
+        "minMs": 612,
+        "maxMs": 818
+      },
+      "responseBytes": 2722
+    },
+    "cart-add-rollback": {
+      "medianMs": 559.66,
+      "minMs": 548.96,
+      "maxMs": 600.21,
+      "queryCounts": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "aborted": true
+    },
+    "cart-quantity-rollback": {
+      "medianMs": 562.83,
+      "minMs": 541.79,
+      "maxMs": 584.51,
+      "queryCounts": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "aborted": true
+    }
+  },
+  "queries": {
+    "catalogue": {
+      "executionTimeMillis": 0,
+      "returned": 2,
+      "documentsExamined": 2,
+      "keysExamined": 2,
+      "stages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "index": "products_catalogue_order"
+        }
+      ]
+    },
+    "admin-products": {
+      "executionTimeMillis": 0,
+      "returned": 2,
+      "documentsExamined": 2,
+      "keysExamined": 2,
+      "stages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "index": "products_admin_page"
+        }
+      ]
+    },
+    "customer-orders": {
+      "executionTimeMillis": 0,
+      "returned": 0,
+      "documentsExamined": 0,
+      "keysExamined": 0,
+      "stages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "index": "orders_customer_page"
+        }
+      ]
+    }
+  },
+  "assets": {
+    "app.js": {
+      "bytes": 117499,
+      "gzipBytes": 29049,
+      "brotliBytes": 24192
+    },
+    "admin.js": {
+      "bytes": 84284,
+      "gzipBytes": 22109,
+      "brotliBytes": 18967
+    },
+    "rider-app.js": {
+      "bytes": 31005,
+      "gzipBytes": 8928,
+      "brotliBytes": 7613
+    },
+    "styles.css": {
+      "bytes": 68961,
+      "gzipBytes": 15148,
+      "brotliBytes": 13168
+    },
+    "puraina-commerce.css": {
+      "bytes": 16165,
+      "gzipBytes": 3757,
+      "brotliBytes": 3194
+    },
+    "index.html": {
+      "bytes": 3248,
+      "gzipBytes": 1164,
+      "brotliBytes": 876
+    }
+  },
+  "connectAndPingMs": 1036.07,
+  "available": {
+    "customer": true,
+    "admin": true,
+    "rider": true,
+    "product": true
+  }
+}

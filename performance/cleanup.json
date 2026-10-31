@@ -1,0 +1,122 @@
+﻿[
+    {
+        "Name":  "build-admin-catalogue.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "complete-test-migration.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "edit-performance-admin.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "edit-performance-frontend.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "edit-performance-legacy-admin.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "edit-performance-paging.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "edit-performance-rider.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "finish-cleanup.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "finish-performance-ui.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "fix-performance-edges.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "sanitize-performance-plans.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "split-performance-views.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "update-frontend.mjs",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "performance-baseline",
+        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+    },
+    {
+        "Name":  "performance-edge-0fqJg2",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-4gSiGu",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-941wZM",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-aJp8ja",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-CRLSDN",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-DN6nhy",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-EcxezN",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-HHdfTD",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-Kmz7Vh",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-Nhk5F2",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-qFtz0t",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-RBH3lh",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "performance-edge-s5nKSV",
+        "Action":  "Removed inactive disposable browser profile"
+    },
+    {
+        "Name":  "verify-extracted-views.mjs",
+        "Action":  "Removed completed final verification helper or inactive profile"
+    },
+    {
+        "Name":  "write-verification-report.mjs",
+        "Action":  "Removed completed final verification helper or inactive profile"
+    },
+    {
+        "Name":  "performance-edge-GerccK",
+        "Action":  "Removed completed final verification helper or inactive profile"
+    }
+]

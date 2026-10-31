@@ -1,0 +1,495 @@
+﻿{
+    "completedAt":  "2026-10-31T04:44:45.692Z",
+    "tests":  136,
+    "syntaxModules":  80,
+    "frontendFiles":  90,
+    "comparison":  [
+                       {
+                           "name":  "Customer bootstrap (full)",
+                           "key":  "/api/bootstrap",
+                           "historicalBeforeMs":  1572.45,
+                           "remeasuredBeforeMs":  1657.58,
+                           "afterMs":  640.57,
+                           "improvement":  "61.4%"
+                       },
+                       {
+                           "name":  "Admin bootstrap (full)",
+                           "key":  "/api/admin/bootstrap",
+                           "historicalBeforeMs":  3606.43,
+                           "remeasuredBeforeMs":  3647.97,
+                           "afterMs":  1020.91,
+                           "improvement":  "72.0%"
+                       },
+                       {
+                           "name":  "Product listing",
+                           "key":  "/api/products?limit=24",
+                           "historicalBeforeMs":  194.77,
+                           "remeasuredBeforeMs":  194.43,
+                           "afterMs":  99.54,
+                           "improvement":  "48.8%"
+                       },
+                       {
+                           "name":  "Cart add",
+                           "key":  "cart-add-rollback",
+                           "historicalBeforeMs":  826.05,
+                           "remeasuredBeforeMs":  905.57,
+                           "afterMs":  581.44,
+                           "improvement":  "35.8%"
+                       },
+                       {
+                           "name":  "Cart quantity change",
+                           "key":  "cart-quantity-rollback",
+                           "historicalBeforeMs":  819.72,
+                           "remeasuredBeforeMs":  898.73,
+                           "afterMs":  571.02,
+                           "improvement":  "36.5%"
+                       },
+                       {
+                           "name":  "Admin dashboard/overview",
+                           "key":  "/api/admin/bootstrap?view=overview\u0026limit=25",
+                           "historicalBeforeMs":  3574.71,
+                           "remeasuredBeforeMs":  3656.46,
+                           "afterMs":  298.91,
+                           "improvement":  "91.8%"
+                       },
+                       {
+                           "name":  "Rider inbox/bootstrap",
+                           "key":  "/api/rider/bootstrap?limit=20",
+                           "historicalBeforeMs":  650.01,
+                           "remeasuredBeforeMs":  680.16,
+                           "afterMs":  199.97,
+                           "improvement":  "70.6%"
+                       },
+                       {
+                           "name":  "COD checkout (fresh order)",
+                           "key":  "checkout",
+                           "historicalBeforeMs":  null,
+                           "remeasuredBeforeMs":  2400.35,
+                           "afterMs":  2311.31,
+                           "improvement":  "3.7%"
+                       }
+                   ],
+    "currentUi":  {
+                      "customerBootstrapMs":  291.27,
+                      "adminBootstrapMs":  298.91,
+                      "cartMutationMs":  500.34
+                  },
+    "databaseSafety":  {
+                           "unchanged":  true,
+                           "collections":  28,
+                           "snapshot":  {
+                                            "addresses":  {
+                                                              "count":  1,
+                                                              "sha256":  "09f80540918e3e4a80e3638c9ac3338f43029c6fce9ea80a29471b33df693328"
+                                                          },
+                                            "adminAuditLog":  {
+                                                                  "count":  0,
+                                                                  "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                              },
+                                            "admins":  {
+                                                           "count":  1,
+                                                           "sha256":  "2febd6a0d08fe0dea556827909a345c4482fa8bae9cb0b475e0dcce09fe4b9f3"
+                                                       },
+                                            "authAttempts":  {
+                                                                 "count":  0,
+                                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                             },
+                                            "carts":  {
+                                                          "count":  3,
+                                                          "sha256":  "d506a493182b776b110c7f4f8fa578ef1a199412fe6c51e8a6b6afe48975a50f"
+                                                      },
+                                            "categories":  {
+                                                               "count":  1,
+                                                               "sha256":  "e48ec6849dd20281fffca4952589eae7feb5841582f2746606cd9065426cec08"
+                                                           },
+                                            "couponRedemptions":  {
+                                                                      "count":  0,
+                                                                      "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                  },
+                                            "coupons":  {
+                                                            "count":  0,
+                                                            "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                        },
+                                            "deliveryAreas":  {
+                                                                  "count":  1,
+                                                                  "sha256":  "c1bae64e027245662a2f63c917b888a018d066123a1f6f039b159e6dd2194cd6"
+                                                              },
+                                            "notificationCampaigns":  {
+                                                                          "count":  0,
+                                                                          "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                      },
+                                            "notificationDeliveryLogs":  {
+                                                                             "count":  0,
+                                                                             "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                         },
+                                            "notificationDevices":  {
+                                                                        "count":  0,
+                                                                        "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                    },
+                                            "notificationEvents":  {
+                                                                       "count":  10,
+                                                                       "sha256":  "510d4e58789fd9dc56641d4f40cd7c8b68386eb8c08f95da4d26ee9b593c6edd"
+                                                                   },
+                                            "notificationOutbox":  {
+                                                                       "count":  10,
+                                                                       "sha256":  "0d5661add8c002fb9fec112ba838707103e50dbb7ed05bfce64460603cf3c350"
+                                                                   },
+                                            "notificationPreferences":  {
+                                                                            "count":  0,
+                                                                            "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                                        },
+                                            "notifications":  {
+                                                                  "count":  8,
+                                                                  "sha256":  "e6d1716da2c763b997248c6fef012f328f56608ee89bebd53831bb034bb9c831"
+                                                              },
+                                            "orders":  {
+                                                           "count":  1,
+                                                           "sha256":  "707b8b654c378184146916ae20a8e936b13c87fb4df45d3e2fb799bd389572c8"
+                                                       },
+                                            "products":  {
+                                                             "count":  2,
+                                                             "sha256":  "6bb685d69b90ab0cb9080422fde8dde735ed60d421e8df463f75281b375ad91a"
+                                                         },
+                                            "referralEvents":  {
+                                                                   "count":  0,
+                                                                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                               },
+                                            "referrals":  {
+                                                              "count":  0,
+                                                              "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                          },
+                                            "rewards":  {
+                                                            "count":  0,
+                                                            "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                                        },
+                                            "riderNotifications":  {
+                                                                       "count":  2,
+                                                                       "sha256":  "ea37df7868abfd6c33480b2aa8180d765aae60280f6c8f8129378a8e5b8f10e6"
+                                                                   },
+                                            "riders":  {
+                                                           "count":  1,
+                                                           "sha256":  "b48755ddeadc763c94b6de18fdb5f284bfb3c98a2c2f5e2ae4d897d341ff2cf1"
+                                                       },
+                                            "sessions":  {
+                                                             "count":  3,
+                                                             "sha256":  "630351bd900e00ee4f6c7ac460d7863668a022ea697dcb4ca5633d708e2ed299"
+                                                         },
+                                            "settings":  {
+                                                             "count":  1,
+                                                             "sha256":  "b862269b542de99c7533ff95871a979c2ff569efc00b6f6f9cf85961783feda5"
+                                                         },
+                                            "shoppingPreferences":  {
+                                                                        "count":  1,
+                                                                        "sha256":  "c4d969824e8458400121de7d582e62131bf013bd830c67f7a64b925b663c89b1"
+                                                                    },
+                                            "users":  {
+                                                          "count":  2,
+                                                          "sha256":  "0d1c82c3ee6a5ff51fdb0d39024a09bda8c9895d6fdaa01255ffa8fbba7fdd75"
+                                                      },
+                                            "wishlists":  {
+                                                              "count":  1,
+                                                              "sha256":  "a77e82442ab8524bebcc31c942030c71d7b8c96adf5224347dd7c83f3cdafef3"
+                                                          }
+                                        }
+                       },
+    "backupVerification":  {
+                               "count":  60,
+                               "mismatches":  [
+
+                                              ]
+                           },
+    "git":  {
+                "staged":  [
+
+                           ],
+                "envIgnored":  true,
+                "secretFindings":  [
+
+                                   ],
+                "trackedModified":  17
+            },
+    "reviewedFiles":  [
+                          {
+                              "file":  "lib/api-admin-catalogue.mjs",
+                              "sha256":  "8a7df7d6ef7a4d7df5827f01c63cd46aefaffed658cb2c904fac6f9dfc52cbd5",
+                              "review":  "Product detail GET falls through to the registered reader; CRUD regression suite."
+                          },
+                          {
+                              "file":  "lib/api-admin.mjs",
+                              "sha256":  "80974423277dbbf7c3348348f0e04cd41b6d96f65ddf14d8ccd3700449c0a236",
+                              "review":  "Scoped bootstrap, stable paging/search, grouped customer summaries, full overview totals, selector records and access checks."
+                          },
+                          {
+                              "file":  "lib/api-customer.mjs",
+                              "sha256":  "bff414aef3348a2c75f212fcb41e419ed55b8667e1847621c53fb50d35d27428",
+                              "review":  "Compact bootstrap, authoritative cart pricing, expected-quantity conflicts, batched product reads; rollback COD tests."
+                          },
+                          {
+                              "file":  "lib/api-rider.mjs",
+                              "sha256":  "f48a21ccd3ab859c966f280c8eb119e455adb42ed7a9054c79d9002635b0b994",
+                              "review":  "Parallel independent reads, serial transaction reads, contact visibility and delivery state machine; browser and live workflow."
+                          },
+                          {
+                              "file":  "lib/application.mjs",
+                              "sha256":  "4eadc97bcc5ef424b4a6beec98e76355d4c57ac7c0c50889de4b1bdfb0157e49",
+                              "review":  "Public catalogue cache allowlist, private no-store responses, role-specific session hydration, mutation invalidation and compression."
+                          },
+                          {
+                              "file":  "lib/commerce.mjs",
+                              "sha256":  "366243f47590c67ac6764cc460457c8fa7dd0d0603494e2174000422245c7ba2",
+                              "review":  "Coupon usage and rewards grouped by owner, money rounding and stock validation retained; checkout ignores client prices."
+                          },
+                          {
+                              "file":  "lib/http-server.mjs",
+                              "sha256":  "d68bf8c1a52b78b1545de89dbd73fbc1313b1363df00f6cbbe03e7b27c721088",
+                              "review":  "Asynchronous stat/read, compressed assets, bounded cache. Fixed verified 304 Vary/content-length regression."
+                          },
+                          {
+                              "file":  "lib/mongo-notifications.mjs",
+                              "sha256":  "2b8f7dc0964a74f11852e8d7d93e131e2abbbf20d97644760aefa9dfc7f29a23",
+                              "review":  "List/unread parallel reads only outside a session. Live workers never started during verification."
+                          },
+                          {
+                              "file":  "lib/mongo-referrals.mjs",
+                              "sha256":  "65e1768cc79ca25b86f18a4a1aed1b22f197e03b8bc89a46a5f6a27002672758",
+                              "review":  "Related records preloaded; aggregate counts stay global while page rows are bounded."
+                          },
+                          {
+                              "file":  "lib/mongo-repository.mjs",
+                              "sha256":  "bf1f8062299cc519ea6dfe4fd1db5ad130e2f0d029e6d0f0766c81896ac41b52",
+                              "review":  "Request-local promise cache and invalidation; transaction operations remain serial; field-level flush retained."
+                          },
+                          {
+                              "file":  "lib/mongodb-catalogue.mjs",
+                              "sha256":  "5b8d0b007d9589097bcf71e25edb350d476afdbe421351436798304f047b733f",
+                              "review":  "Parallel list/count reads preserve filtering and stable ordering."
+                          },
+                          {
+                              "file":  "lib/mongodb.mjs",
+                              "sha256":  "13a7ef416d9b240ce403c86c87427b67a56c923300d62de2f20e519401073a08",
+                              "review":  "Eight added access-pattern indexes reviewed against live definitions and explain plans; no DDL executed."
+                          },
+                          {
+                              "file":  "public/admin.html",
+                              "sha256":  "5bb6d3374276b84aabb439663159352c07af25ee2150cbd9dbc205050222ac05",
+                              "review":  "Session restoration starts with the login panel hidden."
+                          },
+                          {
+                              "file":  "public/admin.js",
+                              "sha256":  "376c3aeced7835a723d979816a67f6349bcb1f743f6b06eff2f8841243e5af25",
+                              "review":  "Scoped screens, search/paging and selectors; all eleven screens exercised. Removed unused old client-side filter helper."
+                          },
+                          {
+                              "file":  "public/app.js",
+                              "sha256":  "c6f8484d93157db6e2bb0e6eb0344c5d1f0a7f889063e02e8b6241e892b51abe",
+                              "review":  "One bootstrap, loading auth state, direct ADD, optimistic cart, deferred views, bounded listings. Removed unused quantity key helper."
+                          },
+                          {
+                              "file":  "public/index.html",
+                              "sha256":  "a1717ad558498377c27b52a91fffa39d848625bea5fe12aa1721095a451c55c1",
+                              "review":  "Neutral Account label while session restoration is pending."
+                          },
+                          {
+                              "file":  "public/rider-app.js",
+                              "sha256":  "14728184af24a1bb763c6257c59904f2e0e4d0d54b7ddd2f3f27b8ed6869fc0e",
+                              "review":  "Scoped pages and session loading. Fixed reproduced rapid-pagination race with request keys and stale-response checks."
+                          },
+                          {
+                              "file":  "lib/http-performance.mjs",
+                              "sha256":  "5710168403f358e07ff74441d7b70cf9e1f24e88a2a6059250c62f262e40ac9a",
+                              "review":  "Encoding negotiation, asynchronous compression, no-store API replies and Server-Timing."
+                          },
+                          {
+                              "file":  "public/account-views.js",
+                              "sha256":  "10750e081d3a350f30f4c6c476bbf61155b90630a4291243a484ef424b15b202",
+                              "review":  "Extracted rendering functions compared to original code; referral totals use server aggregates. Modal state remains in app.js."
+                          },
+                          {
+                              "file":  "public/api-client.js",
+                              "sha256":  "802e907673fbaa760511d7352040f096d852d6a45fc63091f1405198ea17f837",
+                              "review":  "Only public catalogue responses cached; in-flight GETs coalesce; writes invalidate cache generations."
+                          },
+                          {
+                              "file":  "public/cart-controller.js",
+                              "sha256":  "c9cd1807da47f454b70f977a54421276564f3910779eb1aca07c14c2218de337",
+                              "review":  "Synchronous estimates, coalesced absolute quantities, conflict rebase, ambiguous-response reconciliation and visible rollback."
+                          },
+                          {
+                              "file":  "scripts/performance-audit.mjs",
+                              "sha256":  "838be27cd2b8a82f6da1147d675371f486353672f98feacdc84504a79a265808",
+                              "review":  "Five-sample medians, original baseline preservation, guarded rollback writes and full collection fingerprints."
+                          },
+                          {
+                              "file":  "scripts/performance-browser-check.mjs",
+                              "sha256":  "0ad3b578d3f6ef6b2aec598f81ef064a1e6c6418bcc00ba70571c1d6eb1a828d",
+                              "review":  "Customer/admin/rider mobile workflows, fault injection, rapid pagination, responsive assertions and screenshots."
+                          },
+                          {
+                              "file":  "scripts/performance-browser.mjs",
+                              "sha256":  "adc354bb1b6ec9d7eb6d23fc555c7f3316d4d6beb4cd3468546df67baf15f833",
+                              "review":  "Existing synthetic navigation measurement script retained; browser-before/after JSON are earlier historical captures."
+                          },
+                          {
+                              "file":  "scripts/performance-indexes.mjs",
+                              "sha256":  "7315db7bc6da4546ddb0fa9784c437d2ca774cd25504e9e09a81e32b6a1db2b5",
+                              "review":  "Existing optional apply utility inspected but never run with --apply; retained for review."
+                          },
+                          {
+                              "file":  "scripts/performance-live-check.mjs",
+                              "sha256":  "97fedf87e32148e1792235911d592a70be295787d91ec6c8200e9f67dfe32224",
+                              "review":  "Five abort-only transactions, separate first-checkout/replay samples, commit and HTTP-effect guards, complete data fingerprints."
+                          },
+                          {
+                              "file":  "test/performance-regressions.test.mjs",
+                              "sha256":  "b153fe6eb606502bd8cdd5214aa7811f31fc7427711370f75bd2773fcd13d3f0",
+                              "review":  "Optimistic cart, conflict/failure recovery, private/public cache, scoped admin, query batching, compression and 304 assertions."
+                          },
+                          {
+                              "file":  "test/support/headless-browser.mjs",
+                              "sha256":  "5598a329014a492c1915041f43567c1ee64438971e73899c1e2c2b78bbac41d4",
+                              "review":  "Headless installed Edge with isolated disposable profile and CDP; browser is closed after each run."
+                          },
+                          {
+                              "file":  "scripts/performance-safety.mjs",
+                              "sha256":  "bb5e259a11f3aa1ca3b2540e3941f02882dcd80e0c58f41593af35efa97bbc77",
+                              "review":  "New verification guard denies commits, DDL, write aggregations and writes without an active registered session."
+                          },
+                          {
+                              "file":  "scripts/performance-index-review.mjs",
+                              "sha256":  "a59899074c07878919d0d76a9da3e6b2b42c8d13dd1ce676940f1eb45a1cfbba",
+                              "review":  "Read-only index definitions, duplicate/prefix analysis, plans and prior performance-marker search."
+                          },
+                          {
+                              "file":  "scripts/performance-baseline.mjs",
+                              "sha256":  "5d8617b77ef199d1fc9244530e573624e818986d1f6462db8347e57d04293903",
+                              "review":  "Reproducible extraction of committed original modules; no checkout/reset and no database initialization."
+                          },
+                          {
+                              "file":  "test/performance-safety.test.mjs",
+                              "sha256":  "f282858dca5d6fc8dde0ad1fd387614b4ad3293a8f54a399967598ebec260386",
+                              "review":  "Executed checks proving commit, non-transaction write, aggregation write and DDL guards."
+                          }
+                      ],
+    "cleanup":  [
+                    {
+                        "Name":  "build-admin-catalogue.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "complete-test-migration.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "edit-performance-admin.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "edit-performance-frontend.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "edit-performance-legacy-admin.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "edit-performance-paging.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "edit-performance-rider.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "finish-cleanup.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "finish-performance-ui.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "fix-performance-edges.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "sanitize-performance-plans.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "split-performance-views.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "update-frontend.mjs",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "performance-baseline",
+                        "Action":  "Removed confirmed one-time generator or extracted comparison copy"
+                    },
+                    {
+                        "Name":  "performance-edge-0fqJg2",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-4gSiGu",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-941wZM",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-aJp8ja",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-CRLSDN",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-DN6nhy",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-EcxezN",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-HHdfTD",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-Kmz7Vh",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-Nhk5F2",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-qFtz0t",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-RBH3lh",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "performance-edge-s5nKSV",
+                        "Action":  "Removed inactive disposable browser profile"
+                    },
+                    {
+                        "Name":  "verify-extracted-views.mjs",
+                        "Action":  "Removed completed final verification helper or inactive profile"
+                    },
+                    {
+                        "Name":  "write-verification-report.mjs",
+                        "Action":  "Removed completed final verification helper or inactive profile"
+                    },
+                    {
+                        "Name":  "performance-edge-GerccK",
+                        "Action":  "Removed completed final verification helper or inactive profile"
+                    }
+                ]
+}

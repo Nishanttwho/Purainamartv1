@@ -1,6 +1,6 @@
-import { paginatedRequest } from './pagination.js';
+import { createApiClient } from './api-client.js';
 const state = {
-  view: 'home', rider: null, availableOrders: [], assignedOrders: [], deliveredOrders: [],
+  authLoading: true, page: 0, view: 'home', rider: null, availableOrders: [], assignedOrders: [], deliveredOrders: [],
   deliverySummary: { completedDeliveries: 0, codCollected: 0, month: new Date().toISOString().slice(0,7), monthCompletedDeliveries: 0, monthCodCollected: 0, date: new Date().toISOString().slice(0,10), today: new Date().toISOString().slice(0,10), dailyCompletedDeliveries: 0, dailyCodCollected: 0 },
   authStep: 'login', selectedOrder: null,
   orderTab: 'available', busy: false, notifications: [], notificationUnread: 0, pushEnabled: false, deepLinkHandled: false
@@ -20,7 +20,7 @@ const icon = (name, size = 20) => {
   return `<svg class="rider-inline-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.box}</svg>`;
 };
 
-const api = (url, options = {}) => paginatedRequest(request, url, options);
+const api = createApiClient(request);
 async function request(url, options = {}) {
   const response = await fetch(url, { credentials: 'same-origin', ...options, headers: { ...(options.body ? {'content-type':'application/json'} : {}), ...(options.headers || {}) } });
   const data = await response.json().catch(() => ({}));
@@ -35,14 +35,26 @@ function toast(message) {
   clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.remove('show'), 2600);
 }
 
-async function load(quiet = false, month = state.deliverySummary?.month, date = state.deliverySummary?.date) {
+let loadPending, loadSequence = 0;
+function load(quiet = false, month = state.deliverySummary?.month, date = state.deliverySummary?.date) {
+  const page = state.page, key = JSON.stringify([page, month, date]);
+  if (loadPending?.key === key) return loadPending.promise;
+  const sequence = ++loadSequence;
+  const promise = loadPage(quiet, month, date, page, sequence).finally(() => {
+    if (loadPending?.promise === promise) loadPending = null;
+  });
+  loadPending = { key, promise };
+  return promise;
+}
+async function loadPage(quiet, month, date, page, sequence) {
   try {
-    const query=new URLSearchParams();if(month)query.set('month',month);if(date)query.set('date',date);
+    const query=new URLSearchParams({limit:"24",offset:String(page*24)});if(month)query.set('month',month);if(date)query.set('date',date);
     const data = await api(`/api/rider/bootstrap${query.size ? `?${query}` : ''}`);
+    if (sequence !== loadSequence) return;
     const previous = JSON.stringify([state.rider?.status, state.availableOrders.map(o => o.id), state.assignedOrders.map(o => `${o.id}:${o.status}`), state.deliveredOrders.map(o => o.id)]);
-    Object.assign(state, data);
+    Object.assign(state, data); state.authLoading=false;
     state.rider = data.rider;
-    if(state.rider) import('/push-client.js').then(push=>push.syncGrantedWebPush('rider')).catch(()=>{});
+    if(state.rider && localStorage.getItem('zepto.push.enabled.rider')==='1') import('/push-client.js').then(push=>push.syncGrantedWebPush('rider')).catch(()=>{});
     state.pushEnabled=localStorage.getItem('zepto.push.enabled.rider')==='1';
     if (state.selectedOrder?.id) {
       const fresh = [...data.assignedOrders, ...data.deliveredOrders].find(order => order.id === state.selectedOrder.id);
@@ -52,12 +64,16 @@ async function load(quiet = false, month = state.deliverySummary?.month, date = 
         catch { state.selectedOrder = null; }
       }
     }
+    if (sequence !== loadSequence) return;
     const next = JSON.stringify([state.rider?.status, state.availableOrders.map(o => o.id), state.assignedOrders.map(o => `${o.id}:${o.status}`), state.deliveredOrders.map(o => o.id)]);
-    render();
+    if (!quiet || previous !== next || JSON.stringify(data.deliverySummary)!==loadPage.lastSummary) render();
+    loadPage.lastSummary=JSON.stringify(data.deliverySummary);
     const deepOrderId=new URLSearchParams(location.search).get('order');
     if(deepOrderId&&state.rider&&!state.rider.mustChangePassword&&!state.deepLinkHandled){state.deepLinkHandled=true;try{const result=await api(`/api/rider/orders/${encodeURIComponent(deepOrderId)}`);state.selectedOrder=result.order;state.view='detail';render();}catch{toast('This delivery is no longer available to this rider.');}}
     if (quiet && previous !== next) toast('Dispatch list updated');
   } catch (error) {
+    if (sequence !== loadSequence) return;
+    state.authLoading=false;
     if (error.status === 401) { state.rider = null; render(); }
     else if (!quiet) toast(error.message);
   }
@@ -77,7 +93,7 @@ function render() {
   const header = $('#header-status');
   header.innerHTML = state.rider ? `Rider mode <strong>· ${state.rider.status === 'online' ? 'ONLINE' : 'OFFLINE'}</strong>` : 'Rider access';
   renderNav();
-  if (!state.rider) { main.innerHTML = renderAuth(); return; }
+  if (!state.rider) { main.innerHTML = state.authLoading ? '<p role="status">Restoring your session…</p>' : renderAuth(); return; }
   if (state.rider.mustChangePassword) { main.innerHTML = renderPasswordChange(); return; }
   if (state.view === 'home') main.innerHTML = renderHome();
   else if (state.view === 'orders') main.innerHTML = renderOrders();
@@ -85,6 +101,7 @@ function render() {
   else if (state.view === 'earnings') main.innerHTML = renderEarnings();
   else if (state.view === 'profile') main.innerHTML = renderProfile();
   else main.innerHTML = renderHome();
+  if (['orders','earnings'].includes(state.view)) main.insertAdjacentHTML('beforeend', `<nav aria-label="Order pages"><button data-action="previous-page" ${state.page===0?'disabled':''}>Previous</button><span> Page ${state.page+1} </span><button data-action="next-page" ${Math.max(state.availableOrders.length,state.assignedOrders.length,state.deliveredOrders.length)<24?'disabled':''}>Next</button></nav>`);
 }
 
 function renderAuth() {
@@ -183,11 +200,12 @@ async function collectCash(id) {
 }
 
 document.addEventListener('click', async event => {
-  const target = event.target.closest('[data-action],[data-view],[data-tab],[data-summary-day]'); if (!target) return;
+  const target = event.target.closest('[data-action],[data-view],[data-tab],[data-summary-day]'); if (!target || target.disabled) return;
   if (target.dataset.view) { state.view = target.dataset.view; render(); window.scrollTo({top:0,behavior:'smooth'}); return; }
   if (target.dataset.tab) { state.orderTab = target.dataset.tab; render(); return; }
   if (target.dataset.summaryDay) { const base=state.deliverySummary.today||new Date().toISOString().slice(0,10),day=new Date(`${base}T00:00:00.000Z`);if(target.dataset.summaryDay==='yesterday')day.setUTCDate(day.getUTCDate()-1);return load(false,state.deliverySummary.month,day.toISOString().slice(0,10)); }
   const action = target.dataset.action;
+  if (action === 'previous-page' || action === 'next-page') { state.page=Math.max(0,state.page+(action==='next-page'?1:-1));return load(); }
   if (action === 'change-number') { state.authStep = 'phone'; state.challengeId = null; return render(); }
   if (action === 'refresh') return load();
   if (action === 'open-order') return openOrder(target.dataset.id);
@@ -204,8 +222,8 @@ document.addEventListener('click', async event => {
   if (action === 'enable-push') { try { await import('/push-client.js').then(push=>push.enableWebPush('rider'));state.pushEnabled=true;render();toast('This browser is registered for rider alerts'); } catch(error) { toast(pushErrorMessage(error)); } return; }
   if (action === 'read-notification') { try { await post(`/api/rider/notifications/${encodeURIComponent(target.dataset.id)}/read`);await load(); } catch(error) { toast(error.message); } return; }
   if (action === 'logout') {
-    try { await import('/push-client.js').then(push=>push.deactivateWebPush('rider')); } catch {}
-    await post('/api/rider/auth/logout');
+    await post('/api/rider/auth/logout',{deviceKey:localStorage.getItem('zepto.push.device')||''}); api.clear();
+    loadSequence++; loadPending = null;
     state.rider=null; state.availableOrders=[]; state.assignedOrders=[]; state.deliveredOrders=[]; state.view='home'; state.authStep='phone'; render(); return;
   }
 });
@@ -231,7 +249,7 @@ document.addEventListener('submit', async event => {
   }
 });
 
-window.setInterval(() => { if(state.rider) load(true); }, 8000);
+window.setInterval(() => { if(state.rider && !document.hidden && !state.busy) load(true); }, 15000);
 window.addEventListener('zepto:push-registered',()=>{if(!state.rider)return;state.pushEnabled=true;render();toast('Browser alerts enabled');});
 window.addEventListener('zepto:push-error',event=>toast(pushErrorMessage(new Error(event.detail||'Could not register this browser for alerts'))));
 window.addEventListener('zepto:push-message',async()=>{if(!state.rider)return;try{await load(true);toast('New delivery alert');}catch{}});

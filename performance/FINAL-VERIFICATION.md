@@ -1,0 +1,73 @@
+**PurainaMart final verification — 31 October 2026**
+
+Verification continued from the existing modified working tree. No commit, push, deployment, environment-variable edit, database creation, index change or persistent database mutation was performed. Two verified regressions were fixed: rapid rider pagination could display the wrong page, and compressed static-asset 304 responses omitted Vary and advertised an incorrect uncompressed Content-Length. Two obsolete helpers were removed. No architectural redesign was made.
+
+All 136 tests passed with zero failures, skips or cancellations after the final source edits. The syntax/import check passed for 80 JavaScript modules and 28 API/library imports, with consistent dependency manifests. The production build validated and copied 90 static files to dist/public. Logs are in performance/test-suite.log, performance/syntax-check.log and performance/build.log (ignored by Git). The modified source inventory and SHA-256 values are in performance/verification.json.
+
+| Operation | Historical before (ms) | Remeasured original (ms) | Final optimized (ms) | Change vs remeasured |
+|---|---:|---:|---:|---:|
+| Customer bootstrap (full) | 1572.45 | 1657.58 | 640.57 | 61.4% faster |
+| Admin bootstrap (full) | 3606.43 | 3647.97 | 1020.91 | 72.0% faster |
+| Product listing | 194.77 | 194.43 | 99.54 | 48.8% faster |
+| Cart add | 826.05 | 905.57 | 581.44 | 35.8% faster |
+| Cart quantity change | 819.72 | 898.73 | 571.02 | 36.5% faster |
+| Admin dashboard/overview | 3574.71 | 3656.46 | 298.91 | 91.8% faster |
+| Rider inbox/bootstrap | 650.01 | 680.16 | 199.97 | 70.6% faster |
+| COD checkout (fresh order) | Not captured | 2400.35 | 2311.31 | 3.7% faster |
+
+The actual customer UI now uses compact bootstrap: **291.27 ms**. The admin UI opens the scoped overview: **298.91 ms**. The compact cart-write route used by the UI measured **500.34 ms**. The browser ADD handler updated the DOM in 4.4 ms with a deliberate 300 ms transport delay; this is one synchronous DOM measurement, not a five-sample visual-paint median. The rapid cart burst used 3 writes and converged to the exact expected server quantities.
+
+Every API number is a median of five runs. Read/cart benchmarks use the same local Node process method, MongoDB configuration, real accounts/data, route parameters and new request-local contexts. The original handlers were extracted from Git HEAD (770a9232b7125a289c949103bd55fbc14f8674a2) into an isolated temporary folder, measured against the SAME currently installed indexes, then removed. The optimized tree was never checked out or reverted. The final read/cart audit ran without the test suite, build or browser suite running. The historical before.json was preserved and compared with the newly written after.json; remeasured-before.json supplies the controlled code baseline. after-initial.json preserves the previous session's optimized measurements. Timing varies with network conditions and connection-pool scheduling; five samples do not establish statistical significance.
+
+Checkout timings use a separate matched harness with real session resolution, a fresh valid COD order, authoritative stock/pricing and an explicitly aborted outer transaction. Both versions use the same configured account/area/products and installed indexes. Initial checkout and idempotent replay are now separate samples. The earlier live-rollback-check.json overwrote the initial checkout measurement with the replay, so its 827 ms value is NOT a valid checkout baseline. The new values include database handler work and flushes, but exclude connection setup, transaction setup, abort and HTTP transport; they do not measure a committed production checkout. The small checkout difference should not be treated as a proven improvement. Original and optimized raw samples are in live-rollback-before.json and live-rollback-after.json.
+
+Mobile Edge verification passed 22 workflow assertions, with zero uncaught browser exceptions and zero failed requests. Tests use real local HTTP handlers backed by synthetic in-memory Mongo fixtures, not a new MongoDB database. Customer coverage includes logged-in and logged-out refresh, one bootstrap, homepage loose-product ADD without navigation, repeated quantity changes, concurrent products, injected server failure and reconciliation, refresh persistence, removal, coupon application, duplicate-click COD checkout, inventory deduction, deep links and catalogue/search pagination. Admin coverage includes all eleven screens, login restoration, server search, page navigation and packing/ready controls. Rider coverage includes session/navigation, review, acceptance, pickup, the cash-before-delivery gate, exact COD collection, delivery, earnings and rapid pagination. Customer/admin/rider roots fit 360, 390 and 768 CSS pixels without horizontal document overflow. Saved 390px screenshots were visually inspected. Evidence: browser-workflows.json and mobile-customer.png, mobile-admin.png, mobile-rider.png. The earlier browser-before.json/browser-after.json remain historical captures.
+
+The live MongoDB runs exercised real cart writes, session restoration, COD creation, client-price rejection, exact stock deduction, idempotent duplicate checkout, admin packing, rider acceptance/pickup, COD collection and delivery. All transactions were explicitly aborted, and commitTransaction was guarded against use. Every collection mutation required an active registered transaction; schema operations and write aggregations were forbidden. Notification workers were never started and external fetch was blocked: notification/outbox records created by handlers existed only inside the aborted transactions. No SMS, email or real payment provider was invoked.
+
+SHA-256 fingerprints and counts matched before and after across **28 application collections**, covering complete product/variant documents, carts, shopping preferences, account revisions, orders, sessions, addresses, coupons/redemptions, referrals/rewards, settings, rider state, notifications/outbox, events and audit logs. Per-run checks also confirmed no test order, address, session or notification survived and selected inventory was unchanged. Read-only searches found zero prior performance-prefixed orders, addresses, notifications, rider notifications or selected preferences. The previous session did not preserve its original complete snapshots/IDs, so its entire pre-test state cannot be independently reconstructed; its saved assertions and the marker scan are supporting evidence, while the fresh runs have complete before/after fingerprints.
+
+All eight added indexes are installed and match their declared keys. No identical-key duplicates were found. The existing orders_customer_created index is a non-unique prefix of orders_customer_page; this overlap is a candidate for a future measured consolidation, not a reason to drop an index during this verification. Catalogue, admin product/order, category, customer order, default address and rider notification plans use the new indexes, removing blocking sort stages where applicable. Product-ID, cart-owner and session lookups retain their intended indexes. No tested query showed a harmful increase in work on this dataset. The rider inbox planner chose orders_admin_page and examined one record; delivered history used orders_rider_status. The checkout idempotency probe chose orders_customer_created with zero examined records for the selected customer's empty order history. These tiny-data choices require larger-data validation before claiming scalability or zero write overhead. The database currently has only two products and one existing order: index necessity and workload-wide benefit cannot be conclusively established here. Index definitions and sanitized winning/forced/natural plans are in index-review.json. No index was installed, removed, hidden or changed.
+
+Review covered the 33 initial changed/untracked items: 17 tracked edits, 11 new source/test/tool files and five benchmark artifacts. The four verification source/test files added during this pass were reviewed too. Source notes follow; artifact review confirmed sample counts, conditions, missing checkout history, no customer identifiers in timing keys and preservation of original baselines.
+
+| File | Review |
+|---|---|
+| lib/api-admin-catalogue.mjs | Product detail GET falls through to the registered reader; CRUD regression suite. |
+| lib/api-admin.mjs | Scoped bootstrap, stable paging/search, grouped customer summaries, full overview totals, selector records and access checks. |
+| lib/api-customer.mjs | Compact bootstrap, authoritative cart pricing, expected-quantity conflicts, batched product reads; rollback COD tests. |
+| lib/api-rider.mjs | Parallel independent reads, serial transaction reads, contact visibility and delivery state machine; browser and live workflow. |
+| lib/application.mjs | Public catalogue cache allowlist, private no-store responses, role-specific session hydration, mutation invalidation and compression. |
+| lib/commerce.mjs | Coupon usage and rewards grouped by owner, money rounding and stock validation retained; checkout ignores client prices. |
+| lib/http-server.mjs | Asynchronous stat/read, compressed assets, bounded cache. Fixed verified 304 Vary/content-length regression. |
+| lib/mongo-notifications.mjs | List/unread parallel reads only outside a session. Live workers never started during verification. |
+| lib/mongo-referrals.mjs | Related records preloaded; aggregate counts stay global while page rows are bounded. |
+| lib/mongo-repository.mjs | Request-local promise cache and invalidation; transaction operations remain serial; field-level flush retained. |
+| lib/mongodb-catalogue.mjs | Parallel list/count reads preserve filtering and stable ordering. |
+| lib/mongodb.mjs | Eight added access-pattern indexes reviewed against live definitions and explain plans; no DDL executed. |
+| public/admin.html | Session restoration starts with the login panel hidden. |
+| public/admin.js | Scoped screens, search/paging and selectors; all eleven screens exercised. Removed unused old client-side filter helper. |
+| public/app.js | One bootstrap, loading auth state, direct ADD, optimistic cart, deferred views, bounded listings. Removed unused quantity key helper. |
+| public/index.html | Neutral Account label while session restoration is pending. |
+| public/rider-app.js | Scoped pages and session loading. Fixed reproduced rapid-pagination race with request keys and stale-response checks. |
+| lib/http-performance.mjs | Encoding negotiation, asynchronous compression, no-store API replies and Server-Timing. |
+| public/account-views.js | Extracted rendering functions compared to original code; referral totals use server aggregates. Modal state remains in app.js. |
+| public/api-client.js | Only public catalogue responses cached; in-flight GETs coalesce; writes invalidate cache generations. |
+| public/cart-controller.js | Synchronous estimates, coalesced absolute quantities, conflict rebase, ambiguous-response reconciliation and visible rollback. |
+| scripts/performance-audit.mjs | Five-sample medians, original baseline preservation, guarded rollback writes and full collection fingerprints. |
+| scripts/performance-browser-check.mjs | Customer/admin/rider mobile workflows, fault injection, rapid pagination, responsive assertions and screenshots. |
+| scripts/performance-browser.mjs | Existing synthetic navigation measurement script retained; browser-before/after JSON are earlier historical captures. |
+| scripts/performance-indexes.mjs | Existing optional apply utility inspected but never run with --apply; retained for review. |
+| scripts/performance-live-check.mjs | Five abort-only transactions, separate first-checkout/replay samples, commit and HTTP-effect guards, complete data fingerprints. |
+| test/performance-regressions.test.mjs | Optimistic cart, conflict/failure recovery, private/public cache, scoped admin, query batching, compression and 304 assertions. |
+| test/support/headless-browser.mjs | Headless installed Edge with isolated disposable profile and CDP; browser is closed after each run. |
+| scripts/performance-safety.mjs | New verification guard denies commits, DDL, write aggregations and writes without an active registered session. |
+| scripts/performance-index-review.mjs | Read-only index definitions, duplicate/prefix analysis, plans and prior performance-marker search. |
+| scripts/performance-baseline.mjs | Reproducible extraction of committed original modules; no checkout/reset and no database initialization. |
+| test/performance-safety.test.mjs | Executed checks proving commit, non-transaction write, aggregation write and DDL guards. |
+
+Cleanup removed 13 confirmed one-time editing scripts, the extracted baseline folder, and 13 inactive disposable Edge profiles. The current verification's temporary report/comparison helpers and final browser profile are also removed after writing this report. Migration originals (all 60 saved hashes match), migration-audit evidence, catalogue-import reports, old browser evidence and both pr-health review folders were preserved. Reusable audit, browser, index-plan/review and rollback test scripts remain under scripts/. To recreate the original comparison modules, run node scripts/performance-baseline.mjs before using --baseline. Cleanup details are in cleanup.json.
+
+Git has 17 tracked modified files plus the new source and verification artifacts. Nothing is staged; .env remains ignored and is not staged. The focused scan of changed/new text artifacts found 0 connection strings with credentials, private keys or Google API keys; this is a focused check, not a comprehensive secret-scanner certification. No commit/push/deploy was made.
+
+Failures encountered and resolved: PowerShell blocked npm.ps1, so checks used npm.cmd; the sandboxed MongoDB connection timed out, then the approved external connection succeeded; the new rider workflow test initially expected a timeline label instead of the saved status and was corrected; rapid rider page changes reproduced a real stale-response bug, now fixed and browser-tested; a focused compression test reproduced missing 304 Vary metadata, now fixed and included in the final full suite. Remaining limits: headless Edge mobile emulation does not cover physical Android/iOS or Safari, synthetic browser fixtures are separate from live handler tests, no external notification/payment service was exercised, network latency and the small live dataset limit performance conclusions, and no deployed HTTP/load/concurrency benchmark was run.

@@ -1,11 +1,43 @@
-import { paginatedRequest } from './pagination.js';
+import { createApiClient } from './api-client.js';
+import { createCartController } from './cart-controller.js';
 import { distinctProductImageSources } from './product-images.js';
 import { createPageRouter, routeFromUrl } from './router.js';
 let navigation;
+let accountViews, accountViewsPromise;
+function deferredView(name) {
+  if (accountViews) return accountViews[name]();
+  accountViewsPromise ||= import('./account-views.js').then(module => { accountViews=module.createAccountViews({state, money, money2, escapeHtml, truckIcon, giftIcon, renderAddressNotice, selectedAddressId, cartItemQuantityCopy, renderFreeDeliveryMessage, renderDiscountLines, renderDeliveryLine, referralUrl, productImage, productForOrderItem, emptyState, notificationStatusText, referralCode:()=>pendingReferralCode}); render(); }).catch(error => { accountViewsPromise=null; toast(error.message); });
+  return '<p role="status">Opening page…</p>';
+}
+const listingPages = new Map();
+function listingKey(view = state.view) { return view + ':' + (view === 'search' ? state.searchQuery : view === 'categories' ? state.selectedCategory : ''); }
+async function loadListing(append = false, current = () => true) {
+  const view = state.view, key = listingKey(), previous = listingPages.get(key);
+  if (!['search','categories','orders','notifications'].includes(view)) return;
+  if (['orders','notifications'].includes(view) && !state.user) return;
+  const offset = append ? previous?.rows.length || 0 : 0, limit = 24;
+  const url = new URL(view === 'categories' || view === 'search' ? '/api/products' : '/api/'+view, location.origin);
+  if (view === 'categories') url.searchParams.set('category',state.selectedCategory);
+  if (view === 'search') url.searchParams.set('q',state.searchQuery);
+  url.searchParams.set('limit',String(limit)); url.searchParams.set('offset',String(offset));
+  const data = await api(url.pathname+url.search);
+  if (!current() || state.view !== view || listingKey() !== key) return;
+  const rows = data.products || data.orders || data.notifications || [];
+  const merged = append ? [...(previous?.rows || []), ...rows] : rows;
+  const unique = [...new Map(merged.map(row=>[row.id,row])).values()];
+  listingPages.set(key,{rows:unique,more:data.count !== undefined ? offset+rows.length<data.count : rows.length===limit});
+  if (data.products) {
+    state.products = [...new Map([...state.products,...data.products].map(row=>[row.id,row])).values()];
+    if (view === 'search') state.searchProducts = unique;
+  }
+  if (data.orders) state.orders = unique;
+  if (data.notifications) {state.notifications = unique;state.notificationUnread=data.unread;}
+  render();
+}
 
 const state = {
   view: 'home', categories: [], products: [], cart: { items: [], count: 0, subtotal: 0, delivery: 0, platform: 0, discount: 0, total: 0 },
-  user: null, addresses: [], activeAddress: null, deliveryAreas: [], selectedDeliveryAreaId: null, deliveryQuote: null, orders: [], coupons: [], wishlist: [], notifications: [], notificationUnread: 0, notificationConfig: null, notificationPushEnabled: false, selectedCategory: 'all', searchQuery: '', selectedProduct: null, selectedProductId: null, previousProductView: 'home', looseSelections: {}, productOrderCounts: {},
+  authStatus: 'loading', user: null, addresses: [], activeAddress: null, deliveryAreas: [], selectedDeliveryAreaId: null, deliveryQuote: null, orders: [], coupons: [], wishlist: [], notifications: [], notificationUnread: 0, notificationConfig: null, notificationPushEnabled: false, selectedCategory: 'all', searchQuery: '', selectedProduct: null, selectedProductId: null, previousProductView: 'home', looseSelections: {}, productOrderCounts: {},
   auth: null, modal: null, returnView: 'home', checkoutPayment: 'cod', checkoutAddressId: null, addressNotice: null, activeOrder: null, busy: false, googleBusy: false, loggingOut: false, catalogueLoaded: false, storeLoadError: null,
   referralData: null, referralLoading: false, referralError: null, offersFilter: 'all', offersTermsOpen: false, checkoutRequest: null, placingOrder: false, mode: 'development'
 };
@@ -13,7 +45,13 @@ const state = {
 Object.assign(state, routeFromUrl(location.href));
 try { state.checkoutRequest = JSON.parse(sessionStorage.getItem('puraina.checkoutRequest') || 'null'); } catch {}
 let pendingReferralCode = '';
-const pendingQuantityRequests = new Set();
+let bootstrapPromise;
+const cartController = createCartController({
+  getCart: () => state.cart,
+  setCart: cart => { const affected = new Set([...state.cart.items,...cart.items].filter(item => state.cart.items.find(row=>row.id===item.id&&row.variantId===item.variantId)?.quantity !== cart.items.find(row=>row.id===item.id&&row.variantId===item.variantId)?.quantity).map(item=>item.id)); state.cart = cart; state.activeCoupon = cart.activeCoupon; setNav(); if (['cart','product','checkout'].includes(state.view)) render(); else for (const id of affected) syncProductQuantity(id); },
+  send: async body => { const result = await post('/api/cart/items?offers=0', body); delete result.couponOffers; return result; },
+  read: () => api('/api/cart'), onError: error => toast(error.message)
+});
 try {
   const referralParams = new URLSearchParams(window.location.search);
   pendingReferralCode = (referralParams.get('code') || referralParams.get('ref') || sessionStorage.getItem('zepto.pendingReferral') || '').trim().toUpperCase();
@@ -29,7 +67,7 @@ function cartItemQuantityCopy(item) { if (item.saleType === 'loose' && Number(it
 function cartUnitPriceCopy(item) { if (item.saleType === 'loose' && Number(item.quantityPerUnit) > 0) return `${money2(Number(item.price) * 1000 / Number(item.quantityPerUnit))}/${item.measurementUnit === 'ml' ? 'l' : 'kg'}`; return `${money(item.price)} each`; }
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
-const api = (url, options = {}) => paginatedRequest(request, url, options);
+const api = createApiClient(request);
 async function request(url, options = {}) {
   const isReadOnly = String(options.method || 'GET').toUpperCase() === 'GET';
   const controller = isReadOnly ? new AbortController() : null;
@@ -72,16 +110,17 @@ async function handleNotificationHash(initial = false) {
   render();
 }
 
-async function bootstrap() {
+function bootstrap() { return bootstrapPromise ||= loadBootstrap().finally(() => { bootstrapPromise = null; }); }
+async function loadBootstrap() {
   render();
-  const data = await api('/api/bootstrap');
-  if (data.cataloguePagination?.count > data.products.length) data.products = (await api('/api/products')).products;
-  if (data.categories?.length >= 200) data.categories = (await api('/api/categories')).categories;
+  const data = await api('/api/bootstrap?compact=1&limit=24');
   Object.assign(state, data);
+  state.authStatus = 'ready';
+  performance.mark('puraina-auth-ready');
   state.loggingOut = false;
   state.catalogueLoaded = true;
 
-  if (state.user) import('/push-client.js').then(push => push.syncGrantedWebPush('customer')).catch(() => {});
+  if (state.user && localStorage.getItem('zepto.push.enabled.customer') === '1') import('/push-client.js').then(push => push.syncGrantedWebPush('customer')).catch(() => {});
   // Render the catalog as soon as bootstrap data arrives. Referral validation
   // and deep-link data are secondary requests and must not keep the home blank.
   render();
@@ -101,6 +140,7 @@ async function bootstrap() {
 }
 function showStoreLoadError(error) {
   console.error('[Puraina Mart] Store startup failed:', error);
+  state.authStatus = 'error';
   state.storeLoadError = error?.message || 'Check your connection and try again.';
   state.view = 'home';
   render();
@@ -125,11 +165,10 @@ function toast(message) {
 function pushErrorMessage(error) { const message=String(error?.message||'');return error instanceof TypeError||/failed to fetch|dynamically imported module|networkerror/i.test(message)?'Could not reach Firebase notifications. Check your internet connection and Firebase setup, then try again.':message||'Could not enable browser notifications.'; }
 function categoryById(id) { return state.categories.find(c => c.id === id) || state.categories[0]; }
 function productQuantity(id, variantId = null) { return state.cart.items.find(row => row.id === id && (row.variantId || null) === (variantId || null))?.quantity || 0; }
-function productQuantityLimit(product, variant = null) { const available = variant ? (product.saleType === 'packed' ? Number(variant.stock) : Math.floor(Number(variant.stock) / Number(variant.quantityBase || 1))) : Number(product?.stock); return Math.max(0, Math.min(10, available || 0)); }
+function productQuantityLimit(product, variant = null) { const stock = Math.min(Number(product?.stock || 0), Number(variant?.stock ?? product?.stock ?? 0)); const available = variant && product.saleType === 'loose' ? Math.floor(stock / Number(variant.quantityBase || 1)) : stock; return Math.max(0, Math.min(10, available || 0)); }
 function usableVariants(product) { return (product?.variants || []).filter(row => row.isActive !== false); }
 function defaultVariant(product) { return usableVariants(product).find(row => Number(row.stock) > 0) || usableVariants(product)[0] || null; }
-function quantityRequestKey(id, variantId) { return `${id}\u0000${variantId || ''}`; }
-function quantityRequestPending(id, variantId) { return pendingQuantityRequests.has(quantityRequestKey(id, variantId)); }
+function quantityRequestPending() { return state.placingOrder || state.loggingOut; }
 function priceMarkup(price, mrp, large = false, exact = false) { const hasReference = mrp != null && Number(mrp) > Number(price); return `<span class="${large?'quantity-price-large':'product-price'}">${exact ? money2(price) : money(price)}</span>${hasReference?` <s class="product-mrp">${money(mrp)}</s> <span class="discount-label">${Math.round((1-Number(price)/Number(mrp))*100)}% off</span>`:''}`; }
 function productImage(product, className = 'product-photo', source = null) {
   const imageSource = source || distinctProductImageSources(product)[0];
@@ -139,7 +178,7 @@ function productImage(product, className = 'product-photo', source = null) {
   const priority = className === 'detail-product-photo' ? 'high' : 'auto';
   const sizes = className === 'detail-product-photo' || className === 'product-page-photo' ? '(max-width: 760px) 100vw, 560px' : className === 'cart-product-photo' ? '64px' : '(max-width: 760px) 43vw, 220px';
   return imageSource
-    ? `<img class="${className}" src="${escapeHtml(responsive ? product.thumbnail : imageSource)}"${responsive ? ` srcset="${escapeHtml(product.thumbnail)} 640w, ${escapeHtml(imageSource)} 1200w" sizes="${sizes}"` : ''} alt="${escapeHtml(product.name)}" data-fallback-emoji="${escapeHtml(product?.emoji || '🛍️')}" loading="${loading}" decoding="async" fetchpriority="${priority}"/>`
+    ? `<img class="${className}" src="${escapeHtml(responsive ? product.thumbnail : imageSource)}"${responsive ? ` srcset="${escapeHtml(product.thumbnail)} 640w, ${escapeHtml(imageSource)} 1200w" sizes="${sizes}"` : ''} width="${className.includes('page') || className.includes('detail') ? 560 : 240}" height="${className.includes('page') || className.includes('detail') ? 560 : 240}" alt="${escapeHtml(product.name)}" data-fallback-emoji="${escapeHtml(product?.emoji || '🛍️')}" loading="${loading}" decoding="async" fetchpriority="${priority}"/>`
     : `<span class="${className === 'product-photo' ? 'product-emoji' : 'product-emoji-fallback'}">${escapeHtml(product?.emoji || '🛍️')}</span>`;
 }
 function categoryImage(category) {
@@ -185,7 +224,7 @@ function truckIcon() { return '<svg viewBox="0 0 32 24" aria-hidden="true"><path
 function giftIcon() { return '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 13h22v16H5zM3 9h26v6H3zM16 9v20M16 9c-7 0-9-6-5-7 4-1 5 7 5 7Zm0 0c7 0 9-6 5-7-4-1-5 7-5 7Z"/></svg>'; }
 function setNav() {
   document.querySelectorAll('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.view === (state.view === 'order-success' || state.view === 'checkout' ? 'cart' : state.view)));
-  $('#account-label').textContent = state.user ? (state.user.name.split(' ')[0] || 'Account') : 'Sign in';
+  $('#account-label').textContent = state.user ? (state.user.name.split(' ')[0] || 'Account') : state.authStatus === 'ready' ? 'Sign in' : 'Account';
   const addressName = state.activeAddress ? `${state.activeAddress.label} · ${state.activeAddress.city}` : 'Choose your location';
   $('#address-title').textContent = addressName;
   const badge = $('#cart-badge'); badge.textContent = state.cart.count; badge.classList.toggle('hidden', !state.cart.count);
@@ -205,13 +244,13 @@ function render() {
   document.querySelector('.app-shell')?.classList.toggle('commerce-page', ['cart','offers','checkout','reward-checkout'].includes(state.view));
   document.querySelector('.mobile-nav')?.classList.toggle('hidden', ['product','cart','offers','checkout','reward-checkout'].includes(state.view));
   const main = $('#main-content');
+  if (state.authStatus !== 'ready' && ['account','orders','order-success','checkout','reward-checkout','notifications','referrals','cart'].includes(state.view)) { main.innerHTML = '<div class="empty-state" role="status">' + (state.authStatus === 'error' ? 'Your session could not be loaded. Refresh to retry.' : 'Restoring your session…') + '</div>'; return; }
   main.classList.toggle('is-cart', state.view === 'cart');
   if (state.view === 'home') main.innerHTML = renderHome();
   else if (state.view === 'product') main.innerHTML = renderProductPage();
   else if (state.view === 'categories') main.innerHTML = renderCategories();
   else if (state.view === 'search') main.innerHTML = renderSearch();
   else if (state.view === 'cart') main.innerHTML = renderCart();
-  else if (state.view === 'offers') main.innerHTML = renderOffers();
   else if (state.view === 'offers') main.innerHTML = renderOffers();
   else if (state.view === 'wishlist') main.innerHTML = renderWishlist();
   else if (state.view === 'checkout') main.innerHTML = renderCheckout();
@@ -222,6 +261,8 @@ function render() {
   else if (state.view === 'reward-checkout') main.innerHTML = renderRewardCheckout();
   else if (state.view === 'order-success') main.innerHTML = renderOrderSuccess();
   else main.innerHTML = renderHome();
+  if (['referrals','offers'].includes(state.view) && state.referralData?.hasMore) main.insertAdjacentHTML('beforeend','<button class="secondary-button" data-action="more-referrals">Load more rewards and referrals</button>');
+  if (listingPages.get(listingKey())?.more) main.insertAdjacentHTML('beforeend', '<button class="secondary-button" data-action="load-more">Load more</button>');
   renderModal();
 }
 
@@ -232,16 +273,14 @@ function productCard(product) {
   const category = categoryById(product.category);
   const unavailable = product.variants?.length ? !variant || productQuantityLimit(product, variant) <= 0 : Number(product.stock) <= 0;
   const pending = quantityRequestPending(product.id, variantId);
-  const addControl = product.saleType === 'loose'
-    ? `<button class="quick-add loose-open" data-action="product" data-id="${escapeHtml(product.id)}" aria-label="Choose weight for ${escapeHtml(product.name)}">ADD</button>`
-    : unavailable && !quantity ? '' : quantity
+  const addControl = unavailable && !quantity ? '' : quantity
     ? `<span class="stepper"><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variantId||'')}" data-delta="-1" aria-label="Remove one" ${pending?'disabled':''}>−</button><strong>${quantity}</strong><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variantId||'')}" data-delta="1" aria-label="Add one" ${pending||quantity >= productQuantityLimit(product,variant) ? 'disabled' : ''}>+</button></span>`
     : `<button class="quick-add" data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variantId||'')}" data-delta="1" aria-label="Add ${escapeHtml(product.name)}" ${pending?'disabled':''}>ADD</button>`;
   return `<article class="product-card">
     <div class="product-visual" style="background:${escapeHtml(product.color)}" data-action="product" data-id="${escapeHtml(product.id)}">
     ${product.badge ? `<span class="product-badge">${escapeHtml(product.badge)}</span>` : ''}${distinctProductImageSources(product).length ? productImage(product) : product.emoji ? `<span class="product-emoji">${escapeHtml(product.emoji)}</span>` : `<img class="product-fallback" src="/assets/customer/images/product-placeholder.png" alt=""/>`}${unavailable ? '<img class="sold-out-image" src="/assets/customer/images/sold-out.png" alt="Sold out"/>' : ''}<button class="favorite-button ${saved ? 'saved' : ''}" data-action="favorite" data-id="${escapeHtml(product.id)}" aria-label="${saved ? 'Remove' : 'Add'} ${escapeHtml(product.name)} ${saved ? 'from' : 'to'} wishlist" aria-pressed="${saved}">♥</button><div class="product-cart-control">${addControl}</div>
     </div>
-    <div class="product-info" data-action="product" data-id="${escapeHtml(product.id)}"><small>${escapeHtml(category?.name || 'Grocery')}</small><h3>${escapeHtml(product.name)}</h3><div class="detail">${product.saleType === 'loose' ? 'Loose product' : escapeHtml(variant?.label || product.detail)}</div>
+    <div class="product-info" data-action="product" data-id="${escapeHtml(product.id)}"><small>${escapeHtml(category?.name || 'Grocery')}</small><h3>${escapeHtml(product.name)}</h3><div class="detail">${product.saleType === 'loose' ? 'Loose · '+escapeHtml(variant?.label || 'Select quantity') : escapeHtml(variant?.label || product.detail)}</div>
       <div class="product-price-row">${product.saleType === 'loose' ? `<strong class="product-price">${money(product.price)}/${product.measurementUnit === 'ml' ? 'l' : 'kg'}</strong>` : priceMarkup(variant?.price ?? product.price, variant?.mrp ?? (variant ? null : product.mrp))}</div>
     </div>
   </article>`;
@@ -252,7 +291,7 @@ function sectionHead(title, subtitle = '', action = '') {
 function renderHomepageBanners() {
   return (state.homepageBanners || []).filter(row => row.enabled !== false).slice().sort((a,b)=>Number(a.order||0)-Number(b.order||0)).map(banner => {
     const image='<img src="'+escapeHtml(banner.image)+'" alt="'+escapeHtml(banner.alt||banner.title||'Homepage promotion')+'" loading="lazy"/>', action=banner.action||{type:'none'};
-    if(action.type==='product'&&state.products.some(row=>row.id===action.id))return '<button type="button" class="homepage-banner-action" aria-label="'+escapeHtml(banner.title)+'" data-action="product" data-id="'+escapeHtml(action.id)+'">'+image+'</button>';
+    if(action.type==='product')return '<button type="button" class="homepage-banner-action" aria-label="'+escapeHtml(banner.title)+'" data-action="product" data-id="'+escapeHtml(action.id)+'">'+image+'</button>';
     if(action.type==='category'&&state.categories.some(row=>row.id===action.id))return '<button type="button" class="homepage-banner-action" aria-label="'+escapeHtml(banner.title)+'" data-action="category" data-id="'+escapeHtml(action.id)+'">'+image+'</button>';
     if(action.type==='page'&&['home','categories','cart','account'].includes(action.page))return '<button type="button" class="homepage-banner-action" aria-label="'+escapeHtml(banner.title)+'" data-view="'+action.page+'">'+image+'</button>';
     if(action.type==='external'){try{const url=new URL(action.url);if(url.protocol==='https:'&&!url.username&&!url.password)return '<a class="homepage-banner-action" href="'+escapeHtml(url.href)+'" target="_blank" rel="noopener noreferrer">'+image+'</a>';}catch{}}
@@ -310,7 +349,7 @@ function renderProductPage() {
   const deliveryEstimate = state.cart.deliveryEstimate || '10–20 mins';
   const purchaseRow = loose
     ? `<div class="purchase-controls">${selectedQty ? `<div class="stepper product-page-stepper"><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(selectedId || '')}" data-delta="-1" aria-label="Remove one">−</button><strong>${selectedQty}</strong><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(selectedId || '')}" data-delta="1" aria-label="Add one">+</button></div><span class="added-confirmation">✓ Added to cart</span>` : `<div class="stepper product-page-stepper"><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="-1" aria-label="Reduce selected quantity">−</button><strong>${orderCount}</strong><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="1" aria-label="Increase selected quantity">+</button></div><button class="primary-button product-page-add" data-action="add-loose" data-id="${escapeHtml(product.id)}" ${grams > 0 ? '' : 'disabled'}>🛒&nbsp; Add to cart · <span data-role="loose-total">${money2(chosenPrice * orderCount)}</span></button>`}</div>`
-    : `<div class="purchase-controls">${selectedQty ? `<div class="stepper product-page-stepper"><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-delta="-1" aria-label="Remove one">−</button><strong>${selectedQty}</strong><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-delta="1" aria-label="Add one">+</button></div><span class="added-confirmation">✓ Added to cart</span>` : `<div class="stepper product-page-stepper"><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="-1" aria-label="Reduce quantity">−</button><strong>${orderCount}</strong><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="1" aria-label="Increase quantity">+</button></div><button class="primary-button product-page-add" data-action="add-packaged" data-id="${escapeHtml(product.id)}">🛒&nbsp; Add to cart · ${money(unitPrice * orderCount)}</button>`}</div>`;
+    : `<div class="purchase-controls">${selectedQty ? `<div class="stepper product-page-stepper"><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(selectedId || '')}" data-delta="-1" aria-label="Remove one">−</button><strong>${selectedQty}</strong><button data-action="quantity" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(selectedId || '')}" data-delta="1" aria-label="Add one">+</button></div><span class="added-confirmation">✓ Added to cart</span>` : `<div class="stepper product-page-stepper"><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="-1" aria-label="Reduce quantity">−</button><strong>${orderCount}</strong><button data-action="product-order-step" data-id="${escapeHtml(product.id)}" data-delta="1" aria-label="Increase quantity">+</button></div><button class="primary-button product-page-add" data-action="add-packaged" data-id="${escapeHtml(product.id)}">🛒&nbsp; Add to cart · ${money(unitPrice * orderCount)}</button>`}</div>`;
   const quantityOptions = loose ? `<section class="loose-quantity"><h3>Select quantity</h3><div class="weight-options">${choices.map(row => `<button class="weight-option ${selection.mode === 'preset' && selection.variantId === row.id ? 'selected' : ''}" data-action="loose-preset" data-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(row.id)}" aria-pressed="${selection.mode === 'preset' && selection.variantId === row.id}"><strong>${escapeHtml(row.label)}</strong><small>${money2(row.price)}</small></button>`).join('')}<button class="weight-option ${selection.mode === 'custom' ? 'selected' : ''}" data-action="loose-custom" data-id="${escapeHtml(product.id)}" aria-pressed="${selection.mode === 'custom'}"><strong>Custom</strong><small>Any Qty</small></button></div>${selection.mode === 'custom' ? `<label class="custom-weight-label">Enter quantity (${product.measurementUnit === 'ml' ? 'millilitres' : 'grams'})<span class="weight-input"><input id="custom-weight" type="number" inputmode="numeric" min="50" max="100000" step="1" value="${escapeHtml(selection.grams || '')}" aria-describedby="custom-weight-error"/><b>${escapeHtml(product.measurementUnit || 'g')}</b></span><small id="custom-weight-error" class="custom-weight-error" role="alert"></small></label><div class="custom-price-summary"><strong data-role="custom-price">${grams > 0 ? money2(chosenPrice) : '₹0.00'}</strong><small data-role="custom-formula">(${money(unitPrice)}/${product.measurementUnit === 'ml' ? 'l' : 'kg'} × ${grams > 0 ? (grams / 1000).toFixed(2) : '0.00'} ${product.measurementUnit === 'ml' ? 'l' : 'kg'})</small></div>` : ''}</section>` : '';
   const recommendations = state.products.filter(row => row.category === product.category && row.id !== product.id).slice(0, 4);
   const detailRows = [
@@ -324,7 +363,7 @@ function renderProductPage() {
 }
 function renderCategories() {
   const selected = categoryById(state.selectedCategory);
-  const rows = state.products.filter(p => state.selectedCategory === 'all' || p.category === state.selectedCategory);
+  const rows = listingPages.get(listingKey())?.rows || state.products.filter(p => state.selectedCategory === 'all' || p.category === state.selectedCategory);
   return `<div class="page-title"><div><h1>Categories</h1><p>Browse by category</p></div></div><div class="category-layout"><aside class="category-side">${state.categories.map(c => `<button class="${c.id === state.selectedCategory ? 'active' : ''}" data-action="category" data-id="${escapeHtml(c.id)}"><span>${categoryImage(c)}</span>${escapeHtml(c.name)}</button>`).join('')}</aside><section><div class="category-main-head"><h2>${escapeHtml(selected?.name || 'All items')}</h2><span>${rows.length} items</span></div><div class="product-grid compact">${rows.length ? rows.map(productCard).join('') : emptyState('No items in this category yet', 'Try another category to keep browsing.', '🛍️')}</div></section></div>`;
 }
 function renderSearch() {
@@ -403,51 +442,15 @@ function renderCart() {
   const savingsNote = Number(state.cart.totalSavings || 0) > 0 ? `<p class="cart-savings-note">You’re saving ${money(state.cart.totalSavings)} on this order</p>` : '';
   return `<div class="cart-page"><div class="page-title"><div><h1>Your cart</h1><p>${cartCountCopy()}</p></div></div>${renderDeliveryDestination()}${renderFreeDeliveryMessage()}<div class="cart-layout"><section class="cart-list"><div class="cart-list-head"><h2>Items in your cart</h2><button class="clear-cart" data-action="clear-cart">Clear cart</button></div>${rowHtml}<div class="cart-list-actions"><button class="continue-shopping" data-action="browse">＋ Add more items</button><button class="text-link" data-action="browse">Continue shopping&nbsp; →</button></div></section><aside class="summary-card"><div class="cart-bill-heading"><h2>Bill details</h2></div>${renderCouponOffers()}<div class="bill-row"><span>Item total</span><strong>${money(state.cart.subtotal)}</strong></div>${renderDiscountLines()}${renderDeliveryLine()}<div class="bill-row"><span>Platform fee</span><strong>${money(state.cart.platform)}</strong></div><div class="bill-divider"></div><div class="bill-row bill-total"><span>To pay</span><strong>${money(state.cart.total)}</strong></div>${savingsNote}<p class="checkout-address-hint ${state.activeAddress && state.cart.deliveryAvailable !== false && state.cart.minimumOrderMet !== false ? 'valid' : ''}">${!state.activeAddress ? 'Select a delivery address to continue.' : state.cart.deliveryAvailable === false ? 'Delivery isn’t available at this address.' : state.cart.minimumOrderMet === false ? escapeHtml(addressNoticeCopy()) : 'Delivery address confirmed'}</p><button class="primary-button checkout-button" data-action="checkout" ${canCheckout ? '' : 'disabled'}><span>Continue to checkout</span><span>${money(state.cart.total)}&nbsp; →</span></button></aside></div><div class="cart-mobile-checkout"><div><small>${cartCountCopy()} · total payable</small><strong>${money(state.cart.total)}</strong></div><button data-action="checkout" ${canCheckout ? '' : 'disabled'}>Proceed&nbsp; →</button></div></div>`;
 }
-function renderOffers() {
-  const filters = [['all','All'],['order','Order offers'],['delivery','Free delivery'],['product','Free product']];
-  const coupons = (state.coupons || []).filter(coupon => coupon.isActive !== false);
-  const orderCoupons = coupons.filter(coupon => !['free_delivery','free_product'].includes(coupon.discountType) && !coupon.rewardId);
-  const deliveryCoupons = coupons.filter(coupon => coupon.discountType === 'free_delivery');
-  const rewards = state.referralData?.rewards || [];
-  const availableRewards = rewards.filter(reward => reward.status === 'available' && reward.type === 'free_product');
-  const card = coupon => {
-    const active = state.cart.activeCoupon?.code === coupon.code;
-    const benefit = coupon.discountType === 'percentage' ? `${Number(coupon.discount)}% off${coupon.maximumDiscount ? ` up to ${money(coupon.maximumDiscount)}` : ''}` : `${money(coupon.discount)} off your order`;
-    const details = (state.cart.couponOffers || []).find(row => row.code === coupon.code);
-    const ineligibleReason = details?.ineligibleReason || (Number(coupon.minimum || 0) > Number(state.cart.subtotal || 0) ? `Add ${money(Number(coupon.minimum) - Number(state.cart.subtotal || 0))} more to qualify.` : 'This offer is not available for this account.');
-    return `<article class="offer-group order-group"><div class="offer-group-title"><span class="offer-mini-icon">✦</span><strong>${escapeHtml(coupon.label || 'ORDER OFFER')}</strong></div><div class="offer-detail-card"><span class="offer-art discount-art">%</span><div class="offer-detail-copy"><strong>${escapeHtml(coupon.code)}</strong><span>${escapeHtml(coupon.label || benefit)}</span><small>Min. order ${money(coupon.minimum || 0)}</small>${!active && !details?.eligible ? `<small class="offer-eligibility">${escapeHtml(ineligibleReason)}</small>` : ''}<a href="#offer-terms" data-action="offer-terms">View terms</a></div>${active ? `<div class="offer-apply-state"><button class="offer-apply" disabled>Applied</button><button class="offer-remove" data-action="remove-coupon">Remove</button></div>` : `<button class="offer-apply" data-action="apply-coupon" data-code="${escapeHtml(coupon.code)}" ${!details?.eligible ? 'disabled' : ''}>Apply</button>`}</div></article>`;
-  };
-  const delivery = coupon => {
-    const status = (state.cart.couponOffers || []).find(row => row.code === coupon.code), active = state.cart.activeCoupon?.code === coupon.code;
-    const reason = status?.ineligibleReason || (Number(coupon.minimum || 0) > Number(state.cart.subtotal || 0) ? `Add ${money(Number(coupon.minimum) - Number(state.cart.subtotal || 0))} more to qualify for free delivery.` : 'Choose a delivery area where this offer is available.');
-    return `<article class="offer-group delivery-group"><div class="offer-group-title"><span class="offer-mini-truck">${truckIcon()}</span><strong>FREE DELIVERY</strong></div><div class="offer-detail-card"><span class="offer-art delivery-art">${truckIcon()}</span><div class="offer-detail-copy"><strong>${escapeHtml(coupon.code)}</strong><span>${escapeHtml(coupon.label || 'Free delivery on eligible orders')}</span><small>Min. order ${money(coupon.minimum || 0)}</small>${!active && !status?.eligible ? `<small class="offer-eligibility">${escapeHtml(reason)}</small>` : ''}<a href="#offer-terms" data-action="offer-terms">View terms</a></div>${active ? `<div class="offer-apply-state"><button class="offer-apply" disabled>Applied</button><button class="offer-remove" data-action="remove-coupon">Remove</button></div>` : `<button class="offer-apply" data-action="apply-coupon" data-code="${escapeHtml(coupon.code)}" ${!status?.eligible ? 'disabled' : ''}>Apply</button>`}</div></article>`;
-  };
-  const rewardsHtml = state.user && state.referralLoading ? `<p class="offers-empty">Loading referral rewards…</p>` : state.user ? availableRewards.map(reward => {
-    const product = reward.product || {};
-    return `<article class="offer-group reward-group"><div class="offer-group-title"><span class="offer-mini-gift">${giftIcon()}</span><strong>REFERRAL REWARD</strong></div><div class="offer-detail-card"><span class="offer-art gift-art">${giftIcon()}</span><div class="offer-detail-copy"><strong>Your free product reward</strong><span>Earned through your referral activity</span><div class="reward-offer-product">${product.image ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name || 'Reward product')}"/>` : ''}<span><b>Free product: ${escapeHtml(product.name || 'Reward product')}</b><small>${escapeHtml(product.detail || 'Available after a qualifying referral')}</small></span></div><a href="#offer-terms" data-action="offer-terms">View terms</a></div><button class="offer-apply" data-action="get-reward" data-id="${escapeHtml(reward.id)}">Apply reward</button></div></article>`;
-  }).join('') : `<article class="offer-group reward-group"><div class="offer-group-title"><span class="offer-mini-gift">${giftIcon()}</span><strong>REFERRAL REWARD</strong></div><div class="offer-detail-card"><span class="offer-art gift-art">${giftIcon()}</span><div class="offer-detail-copy"><strong>Your referral rewards</strong><span>Sign in to view rewards earned from friends.</span></div><button class="offer-apply" data-action="offers-login">Sign in</button></div></article>`;
-  const serviceAvailable = state.cart.freeDeliveryThreshold != null && state.cart.deliveryAvailable !== false;
-  const deliveryProgress = serviceAvailable ? `<article class="offer-group delivery-group"><div class="offer-group-title"><span class="offer-mini-truck">${truckIcon()}</span><strong>AREA FREE-DELIVERY BENEFIT</strong></div><div class="offer-detail-card"><span class="offer-art delivery-art">${truckIcon()}</span><div class="offer-detail-copy"><strong>${state.cart.freeDeliveryUnlocked ? 'Free delivery unlocked' : 'Free delivery on eligible orders'}</strong><span>${state.cart.freeDeliveryUnlocked ? 'This benefit is already applied automatically.' : `Unlock free delivery at ${money(state.cart.freeDeliveryThreshold)}`}</span><small>${state.cart.freeDeliveryUnlocked ? 'No coupon code needed' : `${money(state.cart.freeDeliveryRemaining || state.cart.freeDeliveryThreshold)} left on your cart`}</small></div><span class="automatic-delivery-state">${state.cart.freeDeliveryUnlocked ? 'Applied' : 'Automatic'}</span></div></article>` : '';
-  const filter = state.offersFilter;
-  let content = '';
-  if (filter === 'all' || filter === 'order') content += orderCoupons.length ? orderCoupons.map(card).join('') : `<p class="offers-empty">No order offers are available right now.</p>`;
-  if (filter === 'all' || filter === 'delivery') content += deliveryCoupons.length ? deliveryCoupons.map(delivery).join('') : serviceAvailable ? deliveryProgress : `<p class="offers-empty">No free-delivery coupon is configured. Area benefits apply automatically after you select a delivery address.</p>`;
-  if (filter === 'all' || filter === 'product') content += state.user ? rewardsHtml || `<p class="offers-empty">No free-product rewards are available yet.</p>` : rewardsHtml;
-  return `<div class="offers-page"><div class="offers-heading"><button class="offers-back" data-action="cart" aria-label="Back to cart">‹</button><div><h1>Coupons &amp; offers</h1><p>Choose the best offer for your order</p></div></div><div class="offers-filters" role="tablist" aria-label="Offer categories">${filters.map(([id,label]) => `<button role="tab" aria-selected="${filter === id}" class="${filter === id ? 'active' : ''}" data-action="offers-filter" data-filter="${id}">${label}</button>`).join('')}</div><div class="offers-list">${content}</div><details class="offers-terms" id="offer-terms" ${state.offersTermsOpen ? 'open' : ''}><summary><span class="terms-info">i</span><strong>How coupons work</strong><span class="terms-chevron">⌄</span></summary><ul><li>Apply one order offer at a time.</li><li>Offers are validated again at checkout.</li><li>Terms and minimum order values apply.</li></ul></details><section class="offers-payment-note"><h2>Payment options</h2><p>Pay in cash when your order arrives.</p></section></div>`;
-}
-function renderCheckout() {
-  const rows = state.addresses;
-  const selectedAddress = rows.find(address => address.id === (state.checkoutAddressId || state.activeAddress?.id)) || null;
-  return `<div class="page-title"><button class="back-button" data-action="cart">‹</button><div><h1>Checkout</h1><p>Delivery and payment details</p></div></div><div class="checkout-layout"><section class="panel-card">
-    <div class="checkout-section"><h2><span class="step-number">1</span> Delivery address</h2>${rows.length ? rows.map(a => `<label class="address-option ${a.id === (state.checkoutAddressId || state.activeAddress?.id) ? 'selected' : ''}"><input type="radio" name="checkout-address" value="${escapeHtml(a.id)}" ${a.id === (state.checkoutAddressId || state.activeAddress?.id) ? 'checked' : ''}/><span><strong>${escapeHtml(a.label)} · ${escapeHtml(a.deliveryAreaName || (a.deliveryAreaUnavailable ? 'Area unavailable' : 'Area not selected'))}</strong><p>${escapeHtml(a.recipientName || '')}${a.recipientName ? ' · ' : ''}${escapeHtml(a.line1)}${a.line2 ? `, ${a.line2}` : ''}, ${escapeHtml(a.city)}</p></span></label>`).join('') : `<p class="form-hint">No saved address yet. Add a delivery location to continue.</p>`}<button class="add-address-link" data-action="add-address">＋ Add a new address</button>${renderAddressNotice(selectedAddressId())}</div>
-    <div class="checkout-section"><h2><span class="step-number">2</span> Payment method</h2><label class="payment-option ${state.checkoutPayment === 'cod' ? 'selected' : ''}"><input type="radio" name="payment" value="cod" ${state.checkoutPayment === 'cod' ? 'checked' : ''}/><span class="payment-brand">💵</span><span><strong>Cash on delivery</strong><p>Pay the delivery partner when your order arrives</p></span></label><p class="fineprint">Pay in cash when your order arrives.</p></div>
-  </section><aside class="summary-card"><h2>Order summary</h2><div class="checkout-summary-items">${state.cart.items.map(item => `<div class="mini-item checkout-mini-item"><span class="checkout-item-label">${item.image ? `<img class="checkout-item-photo" src="${escapeHtml(item.image)}" alt="" loading="lazy"/>` : `<span class="checkout-item-emoji" aria-hidden="true">${escapeHtml(item.emoji || '🛍️')}</span>`}<span class="checkout-item-name">${escapeHtml(cartItemQuantityCopy(item))} · ${escapeHtml(item.name)}</span></span><strong>${item.saleType === 'loose' ? money2(item.lineTotal) : money(item.lineTotal)}</strong></div>`).join('')}</div>${renderFreeDeliveryMessage()}<div class="bill-row"><span>Items</span><strong>${money(state.cart.subtotal)}</strong></div>${renderDiscountLines()}${renderDeliveryLine()}<div class="bill-row"><span>Platform fee</span><strong>${money(state.cart.platform)}</strong></div><div class="bill-divider"></div><div class="bill-row bill-total"><span>To pay</span><strong>${money(state.cart.total)}</strong></div>${Number(state.cart.totalSavings || 0) > 0 ? `<p class="cart-savings-note">You’re saving ${money(state.cart.totalSavings)} on this order</p>` : ''}<button class="primary-button checkout-button" data-action="place-order" ${rows.length && state.cart.deliveryAvailable !== false && state.cart.minimumOrderMet !== false ? '' : 'disabled'}><span>Place order</span><span>${money(state.cart.total)}&nbsp; →</span></button><p class="fineprint">Pay cash to your rider on delivery.</p></aside></div>`;
-}
-async function loadReferralData() {
+function renderOffers() { return deferredView('renderOffers'); }
+function renderCheckout() { return deferredView('renderCheckout'); }
+async function loadReferralData(append = false) {
   state.referralLoading = true;
   state.referralError = null;
   try {
-    state.referralData = await api('/api/referrals/me');
+    const previous = state.referralData, offset=append ? Number(previous?.nextOffset||24) : 0;
+    const result=await api('/api/referrals/me?limit=24&offset='+offset);
+    state.referralData = {...result,nextOffset:offset+24,referrals:append?[...(previous?.referrals||[]),...result.referrals]:result.referrals,rewards:append?[...(previous?.rewards||[]),...result.rewards]:result.rewards};
     return true;
   } catch (error) {
     state.referralData = null;
@@ -472,41 +475,11 @@ function referralUrl() {
   if (!base) return '';
   try { const url = new URL('/referral', base); url.searchParams.set('code', data.referralCode || ''); return url.toString(); } catch { return ''; }
 }
-function renderReferrals() {
-  if (!state.user) return `<div class="page-title"><div><h1>Refer & Earn</h1><p>Invite friends and earn rewards after their qualifying delivery.</p></div></div><section class="referral-panel"><h2>Browse first, join when ready</h2><p>${pendingReferralCode && state.referralInvite?.valid ? 'Your friend’s referral is saved for this browser session. Sign in or create an account to link it.' : 'Sign in to get your own referral code and track rewards.'}</p><button class="primary-button" data-action="login">Sign in with phone</button><button class="text-link" data-action="browse">Continue shopping</button></section>`;
-  const data = state.referralData;
-  if (state.referralLoading) return `<div class="page-title"><button class="back-button" data-action="account">‹</button><div><h1>Refer & Earn</h1><p>Invite friends and see referral progress</p></div></div><div class="referral-panel referral-load-state" role="status" aria-live="polite"><span class="referral-loader" aria-hidden="true"></span><strong>Loading referral details…</strong></div>`;
-  if (state.referralError || !data) return `<div class="page-title"><button class="back-button" data-action="account">‹</button><div><h1>Refer & Earn</h1><p>Invite friends and see referral progress</p></div></div><section class="referral-panel referral-load-state" role="alert"><h2>Referral details couldn’t be loaded</h2><p>${escapeHtml(state.referralError || 'The referral service did not return any details.')}</p><button class="primary-button" data-action="retry-referrals">Try again</button></section>`;
-  const friends = data.referrals || [], rewards = data.rewards || [], invite = referralUrl();
-  return `<div class="page-title"><button class="back-button" data-action="account">‹</button><div><h1>Refer & Earn</h1><p>Invite friends and see referral progress</p></div></div>${!data.campaign.enabled ? '<p class="referral-campaign-off">The referral campaign is currently paused.</p>' : ''}<section class="referral-hero"><span class="referral-spark">✦</span><small>YOUR REFERRAL CODE</small><h2>${escapeHtml(data.referralCode)}</h2><p>Friends can browse first. You earn after their first delivered order qualifies.</p><div class="referral-actions"><button class="primary-button" data-action="share-referral" ${data.campaign.enabled && invite ? '' : 'disabled'}>Share invite</button><button class="secondary-button" data-action="copy-referral" ${data.campaign.enabled && invite ? '' : 'disabled'}>Copy link</button></div><button class="referral-qr-link" data-action="show-referral-qr" ${data.campaign.enabled && invite ? '' : 'disabled'}>▦ &nbsp; View my QR code</button>${invite ? `<small class="referral-link-preview">${escapeHtml(invite)}</small>` : '<small class="fineprint">Referral sharing is unavailable until the public app URL is configured.</small>'}</section><div class="referral-stats"><article><strong>${friends.length}</strong><span>Friends invited</span></article><article><strong>${friends.filter(row => row.status === 'qualified').length}</strong><span>Qualifying deliveries</span></article><article><strong>${rewards.filter(row => ['available','redeemed'].includes(row.status)).length}</strong><span>Rewards earned</span></article></div><section class="referral-section"><div class="section-head"><div><h2>My Rewards</h2><p>Rewards unlock after a qualifying delivered order of ${money(data.campaign.minimumOrder)} or more.</p></div></div>${rewards.length ? rewards.map(reward => { const product = reward.product; return `<article class="reward-card">${product?.image ? productImage(product, 'reward-photo') : `<div class="reward-placeholder">${escapeHtml(product?.emoji || '🎁')}</div>`}<div class="reward-info"><span class="reward-status ${escapeHtml(reward.status)}">${escapeHtml(reward.status.replaceAll('_',' '))}</span>${reward.type === 'free_product' ? `<h3>${escapeHtml(product?.name || 'Free product')}</h3><p>${escapeHtml(product?.detail || product?.description || '')}</p><div><s>${money(product?.price || 0)}</s> <strong class="free-label">FREE · ₹0</strong></div>` : `<h3>Referral coupon</h3><p>Code <strong>${escapeHtml(reward.couponCode || '')}</strong> · ${money(reward.amount)} off your cart</p>`}<small>${reward.status === 'available' && reward.expiresAt ? 'Expires ' + escapeHtml(new Date(reward.expiresAt).toLocaleDateString()) : reward.status === 'redeemed' ? 'Redeemed ' + (reward.redeemedAt ? escapeHtml(new Date(reward.redeemedAt).toLocaleDateString()) : '') : 'Reward from a completed referral'}</small>${reward.redemptionHistory?.length ? `<small>Redemption history: ${reward.redemptionHistory.map(entry => `${escapeHtml(entry.orderId?.slice(-6) || 'order')} · ${escapeHtml(entry.status)}`).join(', ')}</small>` : ''}${reward.status === 'available' && reward.type === 'free_product' ? `<button class="primary-button" data-action="get-reward" data-id="${escapeHtml(reward.id)}">GET NOW</button>` : reward.status === 'available' && reward.type === 'coupon' ? `<button class="primary-button" data-action="apply-reward-coupon" data-code="${escapeHtml(reward.couponCode || '')}">Apply coupon</button>` : ''}</div></article>`; }).join('') : '<div class="referral-empty">No rewards yet. Invite a friend to get started.</div>'}</section><section class="referral-section"><div class="section-head"><div><h2>Referred friends</h2><p>See who joined and whether their qualifying order is delivered.</p></div></div>${friends.length ? friends.map(friend => `<article class="referral-friend"><span class="referral-avatar">${escapeHtml((friend.name || 'F').slice(0,1).toUpperCase())}</span><div><strong>${escapeHtml(friend.name)}</strong><small>${escapeHtml(friend.phone)} · Joined ${new Date(friend.attributedAt).toLocaleDateString()}</small>${friend.qualifyingOrder ? `<small>Order ${escapeHtml(friend.qualifyingOrder.displayId)} · ${money(friend.qualifyingOrder.subtotal)} · ${escapeHtml(friend.qualifyingOrder.status)}</small>` : '<small>Waiting for a qualifying delivered order</small>'}</div><span class="friend-status">${escapeHtml(friend.status.replaceAll('_',' '))}</span></article>`).join('') : '<div class="referral-empty">No friends have joined with your code yet.</div>'}</section>${!data.referralUrlBase && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1' ? '' : '<p class="fineprint">Configure a public HTTPS referral URL in Admin before sharing links outside this device.</p>'}`;
-}
-function renderRewardCheckout() {
-  const quote = state.rewardQuote, addressId = state.checkoutAddressId || state.activeAddress?.id;
-  if (!state.rewardCheckout) return '<div class="empty-state"><h2>Reward unavailable</h2><button class="primary-button" data-view="referrals">Back to My Rewards</button></div>';
-  const reward = state.referralData?.rewards?.find(row => row.id === state.rewardCheckout), product = quote?.product || reward?.product;
-  if (!product) return '<div class="empty-state"><h2>Loading reward checkout…</h2></div>';
-  return `<div class="page-title"><button class="back-button" data-view="referrals">‹</button><div><h1>Reward checkout</h1><p>Your selected referral product is free</p></div></div><section class="reward-checkout-card">${product.image ? productImage(product, 'reward-checkout-photo') : `<span>${escapeHtml(product.emoji || '🎁')}</span>`}<div><small>REFERRAL REWARD</small><h2>${escapeHtml(product.name)}</h2><p>${escapeHtml(product.detail || '')}</p><s>${money(product.price)}</s> <strong class="free-label">₹0</strong></div></section><section class="checkout-section"><h2>Delivery address</h2>${state.addresses.length ? `<select id="reward-address-select" aria-label="Delivery address">${state.addresses.map(row => `<option value="${escapeHtml(row.id)}" ${row.id === addressId ? 'selected' : ''}>${escapeHtml(row.label)} · ${escapeHtml(row.line1)}, ${escapeHtml(row.city)}</option>`).join('')}</select><button class="text-link" data-action="add-address">＋ Add a new address</button>` : '<p>Add a saved address before continuing.</p><button class="secondary-button" data-action="add-address">＋ Add a new address</button>'}</section><section class="checkout-section"><h2>Payment for delivery</h2><label class="payment-option"><input type="radio" name="payment" value="cod" ${state.checkoutPayment === 'cod' ? 'checked' : ''}/><span>Cash on delivery</span></label></section><section class="summary-card"><h2>Bill summary</h2><div class="bill-row"><span>Reward product</span><strong>₹0</strong></div><div class="bill-row"><span>Delivery</span><strong>${quote ? Number(quote.delivery) ? money(quote.delivery) : 'FREE' : 'Calculating…'}</strong></div><div class="bill-row bill-total"><span>To pay</span><strong>${money(quote?.total || 0)}</strong></div><p class="fineprint">Delivery charge is based on your selected area. The reward does not guarantee free delivery.</p><button class="primary-button" data-action="place-reward-order" data-id="${escapeHtml(state.rewardCheckout)}" ${!addressId || !quote?.available ? 'disabled' : ''}>Place reward order · ${money(quote?.total || 0)}</button></section>`;
-}
-
-function renderAccount() {
-  if (!state.user) return `<div class="page-title"><div><h1>Your account</h1><p>Sign in to save addresses and view your orders</p></div></div><div class="empty-state"><div class="empty-art">♙</div><h2>Welcome to Zepto</h2><p>Sign in to save addresses, favorites, and order history.</p><button class="primary-button" data-action="login">Continue with phone&nbsp; →</button></div>`;
-  const addressLabel = state.activeAddress ? `${state.activeAddress.line1}, ${state.activeAddress.city}` : 'Add a delivery address';
-  return `<div class="page-title"><div><h1>Your account</h1><p>Manage your profile and recent activity</p></div></div><div class="account-layout"><section class="profile-card"><div class="profile-avatar"><img src="/assets/customer/images/user-profile.webp" alt=""/></div><h2>${escapeHtml(state.user.name)}</h2><p>${state.user.phone ? ('+91 ' + escapeHtml(state.user.phone)) : escapeHtml(state.user.email || 'Google account')}</p><div class="profile-actions"><button class="profile-action" data-action="open-orders"><span>▤</span> Your orders</button><button class="profile-action" data-action="address-picker"><span>⌖</span> Addresses</button></div></section><section class="panel-card"><h3>Account</h3><button class="account-link" data-view="notifications"><i class="bell-small"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></i><span><strong>Notifications</strong><small>${state.notificationUnread || 0} unread order updates and offers</small></span>${state.notificationUnread ? `<b class="inline-unread">${state.notificationUnread}</b>` : ''}<em>›</em></button><button class="account-link" data-view="referrals"><i>✦</i><span><strong>Refer & Earn</strong><small>Share your code and track rewards</small></span><em>›</em></button><button class="account-link" data-view="wishlist"><i>♡</i><span><strong>Wishlist</strong><small>${state.wishlist.length} saved item${state.wishlist.length === 1 ? '' : 's'}</small></span><em>›</em></button><button class="account-link" data-action="open-orders"><i>▤</i><span><strong>Orders</strong><small>Track or review your recent orders</small></span><em>›</em></button><button class="account-link" data-action="address-picker"><i>⌖</i><span><strong>Saved addresses</strong><small>${escapeHtml(addressLabel)}</small></span><em>›</em></button><button class="account-link" data-action="wallet"><i>◈</i><span><strong>Payments & coupons</strong><small>Payment options and active offers</small></span><em>›</em></button><button class="account-link" data-action="support"><i>♡</i><span><strong>Help & support</strong><small>Support integration is not configured</small></span><em>›</em></button><button class="account-link" data-action="logout"><i>↪</i><span><strong>Sign out</strong><small>${state.mode === 'production' ? 'End this session' : 'Sign out of your account'}</small></span><em>›</em></button></section></div>`;
-}
-function renderOrders() {
-  if (!state.user) return `<div class="page-title"><div><h1>Your orders</h1><p>Order history</p></div></div><div class="empty-state"><div class="empty-art">▤</div><h2>Sign in to see orders</h2><p>Your orders are saved to this project’s server.</p><button class="primary-button" data-action="login">Sign in&nbsp; →</button></div>`;
-  const orders = [...state.orders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return `<div class="page-title"><button class="back-button" data-action="account">‹</button><div><h1>Your orders</h1><p>${orders.length} order${orders.length === 1 ? '' : 's'}</p></div></div>${orders.length ? `<div class="orders-list">${orders.map(order => `<article class="order-card"><div class="order-item-thumbs">${order.items.slice(0, 3).map(item => { const product = productForOrderItem(item); return product.image ? `<img src="${escapeHtml(product.image)}" alt="" loading="lazy"/>` : ''; }).join('') || '<div class="order-icon">▤</div>'}</div><div class="order-main"><strong>Order ${escapeHtml(order.displayId)}</strong><p>${order.items.length} item${order.items.length === 1 ? '' : 's'} · ${money(order.total)} · ${new Date(order.createdAt).toLocaleDateString()}</p><small>● ${escapeHtml(order.status)} · ${escapeHtml(order.deliveryArea?.name || order.address.deliveryAreaName || 'Delivery area')} · ${escapeHtml(order.eta)}</small><small>Delivery ${money(order.delivery)}</small></div><button data-action="open-order" data-id="${escapeHtml(order.id)}">Details&nbsp; →</button></article>`).join('')}</div>` : emptyState('No orders yet', 'Place an order and it will appear here.', '📦')}`;
-}
-function renderNotifications() {
-  if (!state.user) return `<div class="page-title"><div><h1>Notifications</h1><p>Order and offer updates</p></div></div><div class="empty-state"><div class="empty-art">♧</div><h2>Sign in to view updates</h2><p>Your order updates are saved with your account.</p><button class="primary-button" data-action="login">Sign in&nbsp; →</button></div>`;
-  const rows = state.notifications || [];
-  const pushStatus = notificationStatusText();
-  const permission = 'Notification' in window ? Notification.permission : 'unsupported';
-  const unavailable = permission === 'denied' || permission === 'unsupported' || state.notificationConfig === false;
-  return `<div class="page-title"><button class="back-button" data-action="account">‹</button><div><h1>Notifications</h1><p>${state.notificationUnread || 0} unread update${state.notificationUnread === 1 ? '' : 's'}</p></div>${state.notificationUnread ? '<button class="secondary-button mark-all-read" data-action="mark-notifications-read">Mark all read</button>' : ''}</div><section class="panel-card push-settings"><div><h2>Browser notifications</h2><p>Enable notifications to receive order and delivery updates on this device.</p></div><button class="primary-button" data-action="enable-push" ${unavailable ? 'disabled' : ''}>${state.notificationPushEnabled ? 'Refresh this device' : 'Enable notifications'}</button><small class="fineprint" data-push-status role="status" aria-live="polite">${escapeHtml(pushStatus)}</small></section><div data-notification-history>${rows.length ? `<div class="notification-list">${rows.map(item => `<article class="notification-card ${item.readAt ? 'read' : 'unread'}"><span class="notification-icon">${item.type === 'offer' ? '<img src="/assets/customer/images/offer-default.png" alt=""/>' : item.type === 'delivery' ? '⌖' : '▤'}</span><div class="notification-copy"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.message)}</p><small>${new Date(item.createdAt).toLocaleString()}</small></div>${!item.readAt ? `<button class="notification-mark" data-action="mark-notification-read" data-id="${escapeHtml(item.id)}" aria-label="Mark as read">●</button>` : ''}${item.orderId ? `<button class="text-link" data-action="notification-order" data-id="${escapeHtml(item.orderId)}">View order&nbsp; →</button>` : ''}</article>`).join('')}</div>` : `<div class="empty-state"><div class="empty-art">♧</div><h2>You’re all caught up</h2><p>Order updates and offers will appear here.</p></div>`}</div><p class="fineprint notification-footnote">In-app notification history remains available if browser push is unavailable.</p>`;
-}
-
+function renderReferrals() { return deferredView('renderReferrals'); }
+function renderRewardCheckout() { return deferredView('renderRewardCheckout'); }
+function renderAccount() { return deferredView('renderAccount'); }
+function renderOrders() { return deferredView('renderOrders'); }
+function renderNotifications() { return deferredView('renderNotifications'); }
 function notificationStatusText() {
   if (!('Notification' in window)) return 'Browser notifications are not supported on this device.';
   if (Notification.permission === 'denied') return 'Notifications are blocked in browser settings. Allow them there to enable delivery updates.';
@@ -531,12 +504,7 @@ function updateNotificationHistory() {
   if (state.notificationUnread && !markAll) $('#main-content .page-title')?.insertAdjacentHTML('beforeend', '<button class="secondary-button mark-all-read" data-action="mark-notifications-read">Mark all read</button>');
   else if (!state.notificationUnread) markAll?.remove();
 }
-function renderOrderSuccess() {
-  const order = state.activeOrder;
-  if (!order) return `<div class="empty-state"><h2>Order details unavailable</h2><button class="primary-button" data-action="open-orders">View orders</button></div>`;
-  return `<div class="page-title"><div><h1>Order updates</h1><p>${state.mode === 'production' ? 'Your order history' : 'Track the progress of your order'}</p></div></div><section class="tracking-hero"><div><small>Order ${escapeHtml(order.displayId)}</small><h2>${escapeHtml(order.status)}</h2><p>${escapeHtml(order.deliveryArea?.name || 'Delivery area')} · ${escapeHtml(order.eta)}</p></div><span>🛵</span></section><div class="cart-layout"><section class="panel-card"><h2 style="font-size:14px;margin:0 0 17px">Order updates</h2><div class="timeline">${order.timeline.map((step,i) => `<div class="timeline-row ${step.complete ? 'done' : ''}"><div class="timeline-marker"><i></i>${i < order.timeline.length - 1 ? '<b></b>' : ''}</div><div class="timeline-copy"><strong>${escapeHtml(step.label)}</strong><small>${step.complete ? new Date(step.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : 'Waiting for the next update'}</small></div></div>`).join('')}</div>${order.cancellation ? `<p class="form-hint">Cancelled by ${escapeHtml(order.cancellation.actorType)} · ${escapeHtml(order.cancellation.reason)}</p>` : ''}</section><aside class="summary-card"><h2>Delivery details</h2><div class="delivery-address"><strong>${escapeHtml(order.deliveryArea?.name || order.address.deliveryAreaName || 'Delivery area')}</strong><br/>${escapeHtml(order.address.label)} · ${escapeHtml(order.address.line1)}, ${escapeHtml(order.address.city)}${order.address.pincode ? ` · ${escapeHtml(order.address.pincode)}` : ''}</div><div class="bill-divider"></div><div class="bill-row"><span>Delivery</span><strong>${money(order.delivery)}</strong></div><div class="bill-row"><span>Payment</span><strong>${escapeHtml(order.paymentStatus || order.paymentMethod)}</strong></div><div class="bill-row"><span>Total</span><strong>${money(order.total)}</strong></div>${['Order received', 'Being packed', 'Ready for pickup'].includes(order.status) && !order.riderId ? `<button class="secondary-button" style="width:100%;margin-top:12px" data-action="cancel-order" data-id="${escapeHtml(order.id)}">Cancel order</button><p class="fineprint">Cancellation is available until a rider accepts the order.</p>` : ''}<button class="secondary-button" style="width:100%;margin-top:12px" data-action="open-orders">View all orders</button></aside></div>`;
-}
-
+function renderOrderSuccess() { return deferredView('renderOrderSuccess'); }
 let modalLockState = null;
 let activeModalFocusKey = null;
 function syncModalPageState(open) {
@@ -739,7 +707,7 @@ function updateAddressAreaOptions() {
 }
 async function refreshCart() { state.cart = await api('/api/cart'); render(); }
 function syncProductQuantity(id) {
-  const product = state.products.find(row => row.id === id);
+  const product = [...state.products, ...state.wishlist].find(row => row.id === id);
   if (!product) return;
   if (state.modal?.type === 'product' && state.modal.id === id) {
     const info = $('#overlay-root .dialog-product-info');
@@ -757,27 +725,24 @@ function syncProductQuantity(id) {
       : `<button class="quick-add" data-action="quantity" data-id="${escapeHtml(id)}" data-variant-id="${escapeHtml(variantId||'')}" data-delta="1" aria-label="Add ${escapeHtml(product.name)}" ${pending?'disabled':''}>ADD</button>`;
   });
 }
-async function changeQuantity(id, delta, variantId = null) {
-  const requestKey = quantityRequestKey(id, variantId);
-  if (pendingQuantityRequests.has(requestKey)) return;
-  pendingQuantityRequests.add(requestKey);
-  try {
-    if (state.modal?.type === 'product' || ['home', 'categories', 'search'].includes(state.view)) syncProductQuantity(id);
-    else if (state.view === 'cart') render();
-    state.cart = await post('/api/cart/items', { productId: id, variantId, delta: Number(delta) }); state.activeCoupon = state.cart.activeCoupon;
-    setNav();
-  }
-  catch (error) { toast(error.message); }
-  finally {
-    pendingQuantityRequests.delete(requestKey);
-    try {
-      if (state.modal?.type === 'product' || ['home', 'categories', 'search'].includes(state.view)) syncProductQuantity(id);
-      if (state.view === 'cart') render();
-      if (state.view === 'product') render();
-    } catch (error) { toast(error.message); }
-  }
+function changeQuantity(id, delta, variantId = null) {
+  if (state.authStatus !== 'ready' || state.loggingOut || state.placingOrder) return;
+  const product = [...state.products, ...state.wishlist].find(row => row.id === id);
+  const existing = state.cart.items.find(row => row.id === id && (row.variantId || null) === variantId);
+  if (!product && !existing) return;
+  const variant = product?.variants?.find(row => row.id === variantId);
+  const custom = product?.saleType === 'loose' && /^custom-\d+$/.test(variantId || '') ? Number(variantId.slice(7)) : null;
+  const base = custom || variant?.quantityBase || existing?.quantityPerUnit || null;
+  const price = custom ? Math.round(Number(product.price) * custom / 10) / 100 : Number(variant?.price ?? existing?.price ?? product.price);
+  const max = custom ? Math.min(10, Math.floor(product.stock/custom)) : product ? productQuantityLimit(product, variant) : 10;
+  const quantity = Math.max(0, Math.min(Number(delta) > 0 ? max : 10, productQuantity(id, variantId) + Number(delta)));
+  if (quantity === productQuantity(id, variantId)) return;
+  const item = existing || { ...product, id, variantId, variantLabel: custom ? custom+' '+product.measurementUnit : variant?.label || null, quantityPerUnit: base, price, mrp: variant?.mrp ?? product?.mrp, discountPerUnit: Math.max(0, Number(variant?.mrp ?? product?.mrp ?? price)-price), saleType: product?.variants?.length ? product.saleType : 'legacy', isAvailable: true };
+  cartController.set(item, quantity);
 }
+const wishlistPending = new Set();
 async function toggleWishlist(id) {
+  if (wishlistPending.has(id)) return; wishlistPending.add(id);
   try {
     const result = await post('/api/wishlist/toggle', { productId: id });
     state.wishlist = result.items;
@@ -792,18 +757,21 @@ async function toggleWishlist(id) {
     toast(result.added ? 'Added to wishlist' : 'Removed from wishlist');
   }
   catch (error) { toast(error.message); }
+  finally { wishlistPending.delete(id); }
 }
 function setView(view) {
   state.view = view;
+  if (['categories','search','orders','notifications'].includes(view) && state.authStatus === 'ready') loadListing().catch(error=>toast(error.message));
+  if (view === 'notifications') refreshNotificationConfig().then(updateNotificationPushStatus);
   state.modal = null;
   state.selectedProductId = null;
 
   if (view === 'account' && !state.user) { render(); return; }
   render(); window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-function openProduct(id) {
-  const product = state.products.find(row => row.id === id);
-  if (!product) return;
+async function openProduct(id) {
+  let product = state.products.find(row => row.id === id);
+  if (!product) { try { ({product} = await api('/api/products/'+encodeURIComponent(id))); state.products.push(product); } catch(error) { toast(error.message); return; } }
   if (state.view !== 'product') state.previousProductView = state.view;
   state.selectedProductId = id; state.view = 'product'; state.modal = null;
 
@@ -813,8 +781,10 @@ function leaveProduct() { navigation.back(() => setView(state.previousProductVie
 function selectedAddressId() { return $('input[name="checkout-address"]:checked')?.value || state.checkoutAddressId || state.activeAddress?.id; }
 async function placeOrder() {
   if (state.placingOrder) return;
-  if (!state.user) { openAuth(); return; }
-  if (!state.addresses.length) { openAddress('form'); return; }
+  state.placingOrder=true;
+  try { await cartController.flush(); } catch { state.placingOrder=false;return; }
+  if (!state.user) { state.placingOrder=false;openAuth(); return; }
+  if (!state.addresses.length) { state.placingOrder=false;openAddress('form'); return; }
   const addressId = selectedAddressId();
   const signature = JSON.stringify([state.user.id, state.cart.items.map(item => [item.id, item.variantId, item.quantity]), addressId, state.cart.deliveryArea?.id || state.selectedDeliveryAreaId, state.checkoutPayment, state.cart.activeCoupon?.code || null]);
   if (state.checkoutRequest?.signature !== signature) {
@@ -852,15 +822,19 @@ async function cancelCustomerOrder(id) {
 }
 
 document.addEventListener('click', async event => {
-  const button = event.target.closest('[data-action],[data-view]'); if (!button) return;
+  const button = event.target.closest('[data-action],[data-view]'); if (!button || button.disabled) return;
+  if (button.closest('.product-cart-control') || button.dataset.action === 'favorite') { event.preventDefault(); event.stopPropagation(); }
+  if (state.authStatus === 'loading') { try { await bootstrap(); } catch { return; } }
   if (button.dataset.view) {
     if (button.matches('a')) event.preventDefault();
     if (button.dataset.view === 'home') return setView('home');
     if (button.dataset.view === 'referrals') return openReferrals();
-    if (button.dataset.view === 'notifications' && state.user) { try { const n=await api('/api/notifications');state.notifications=n.notifications;state.notificationUnread=n.unread;state.notificationPushEnabled=localStorage.getItem('zepto.push.enabled.customer')==='1'; } catch(error) { toast(error.message); } }
+
     setView(button.dataset.view); return;
   }
   const action = button.dataset.action;
+  if (action === 'more-referrals') { button.disabled=true;await loadReferralData(true);render();return; }
+  if (action === 'load-more') { button.disabled = true; try { await loadListing(true); } catch(error) { button.disabled=false;toast(error.message); } return; }
   if (action === 'scrim-close' && event.target === button) { state.modal = null; return renderModal(); }
   if (action === 'close-modal') { state.modal = null; return renderModal(); }
   if (action === 'google-login') return startGoogleSignIn(button);
@@ -880,12 +854,12 @@ document.addEventListener('click', async event => {
   if (action === 'share-referral' || action === 'copy-referral' || action === 'show-referral-qr') { const link = referralUrl(); if (!link) { toast('Referral sharing is unavailable until the public app URL is configured.'); return; } if (action === 'show-referral-qr') { state.modal = { type: 'qr', code: state.referralData?.referralCode }; return renderModal(); } if (action === 'share-referral' && navigator.share) { try { await navigator.share({ title: 'Join me on Puraina Mart', text: 'Shop with my referral link', url: link }); } catch (error) { if (error.name !== 'AbortError') toast('Sharing was unavailable. Copy the invite link instead.'); } return; } try { await navigator.clipboard.writeText(link); toast('Referral link copied'); } catch { toast(link); } return; }
   if (action === 'get-reward') { state.rewardCheckout = button.dataset.id; state.view = 'reward-checkout'; state.checkoutAddressId = state.activeAddress?.id || state.addresses[0]?.id || null; try { state.rewardQuote = state.checkoutAddressId ? await api('/api/rewards/' + encodeURIComponent(button.dataset.id) + '/quote?addressId=' + encodeURIComponent(state.checkoutAddressId)) : null; } catch (error) { state.rewardQuote = null; toast(error.message); } return render(); }
   if (action === 'place-reward-order') { if (state.placingOrder) return; state.placingOrder = true; button.disabled = true; const rewardId = button.dataset.id; try { const response = await post('/api/rewards/' + encodeURIComponent(rewardId) + '/redeem', { addressId: state.checkoutAddressId || state.activeAddress?.id, deliveryAreaId: state.rewardQuote?.area?.id, paymentMethod: 'cod', idempotencyKey: rewardRequestKey(rewardId) }); try { sessionStorage.removeItem('puraina.rewardRequest.' + rewardId); } catch {} state.activeOrder = response.order; state.orders = [response.order, ...state.orders.filter(row => row.id !== response.order.id)]; state.view = 'order-success'; render(); await loadReferralData(); render(); toast('Reward order placed'); } catch (error) { toast(error.message); try { await loadReferralData(); } catch {} render(); } finally { state.placingOrder = false; } return; }
-  if (action === 'apply-reward-coupon') { try { await post('/api/coupons/apply', { code: button.dataset.code }); state.cart = await api('/api/cart'); state.activeCoupon = state.cart.activeCoupon; setView('cart'); toast('Referral coupon applied'); } catch (error) { toast(error.message); } return; }
-  if (action === 'open-orders') { if (!state.user) { state.returnView = 'orders'; state.modal = { type: 'auth', step: 'phone' }; return renderModal(); } try { state.orders = (await api('/api/orders')).orders; } catch {} return setView('orders'); }
-  if (action === 'open-notifications') { if (!state.user) { state.returnView = 'notifications'; state.modal = { type: 'auth', step: 'phone' }; return renderModal(); } try { const result = await api('/api/notifications'); state.notifications = result.notifications; state.notificationUnread = result.unread; state.notificationPushEnabled=localStorage.getItem('zepto.push.enabled.customer')==='1'; } catch (error) { toast(error.message); } return setView('notifications'); }
+  if (action === 'apply-reward-coupon') { try { await cartController.flush(); const result = await post('/api/coupons/apply', { code: button.dataset.code }); state.cart = result.cart; state.activeCoupon = state.cart.activeCoupon; setView('cart'); toast('Referral coupon applied'); } catch (error) { toast(error.message); } return; }
+  if (action === 'open-orders') { if (!state.user) { state.returnView = 'orders'; return openAuth(); } return setView('orders'); }
+  if (action === 'open-notifications') { if (!state.user) { state.returnView='notifications'; return openAuth(); } return setView('notifications'); }
   if (action === 'enable-push') { button.disabled = true; button.textContent = 'Enabling…'; try { await import('/push-client.js').then(push=>push.enableWebPush('customer')); state.notificationPushEnabled=true; localStorage.setItem('zepto.push.enabled.customer','1'); updateNotificationPushStatus(); toast('This browser is registered for notifications'); } catch(error) { toast(pushErrorMessage(error)); updateNotificationPushStatus(); } finally { if (button.isConnected) button.disabled = false; } return; }
-  if (action === 'mark-notification-read') { try { await post(`/api/notifications/${encodeURIComponent(button.dataset.id)}/read`); const result = await api('/api/notifications'); state.notifications = result.notifications; state.notificationUnread = result.unread; updateNotificationHistory(); setNav(); } catch (error) { toast(error.message); } return; }
-  if (action === 'mark-notifications-read') { try { await post('/api/notifications/read-all'); const result = await api('/api/notifications'); state.notifications = result.notifications; state.notificationUnread = result.unread; updateNotificationHistory(); setNav(); } catch (error) { toast(error.message); } return; }
+  if (action === 'mark-notification-read') { try { const result=await post(`/api/notifications/${encodeURIComponent(button.dataset.id)}/read`); state.notifications=state.notifications.map(row=>row.id===button.dataset.id?result.notification:row);state.notificationUnread=result.unread;updateNotificationHistory();setNav(); } catch(error) {toast(error.message);}return; }
+  if (action === 'mark-notifications-read') { try {await post('/api/notifications/read-all');state.notifications=state.notifications.map(row=>({...row,readAt:row.readAt||new Date().toISOString()}));state.notificationUnread=0;updateNotificationHistory();setNav();}catch(error){toast(error.message);}return; }
   if (action === 'notification-order') { try { const { order } = await api(`/api/orders/${encodeURIComponent(button.dataset.id)}`); state.orders = [order, ...state.orders.filter(row => row.id !== order.id)]; state.modal = { type: 'order', id: order.id }; renderModal(); } catch (error) { toast(error.message); } return; }
   if (action === 'category') { state.selectedCategory = button.dataset.id; return setView('categories'); }
   if (action === 'product') return openProduct(button.dataset.id);
@@ -910,7 +884,7 @@ document.addEventListener('click', async event => {
   if (action === 'add-packaged') {
     const product = state.products.find(row => row.id === button.dataset.id);
     if (!product || product.saleType === 'loose') return;
-    return changeQuantity(product.id, Number(state.productOrderCounts[product.id] || 1));
+    return changeQuantity(product.id, Number(state.productOrderCounts[product.id] || 1), defaultVariant(product)?.id || null);
   }
   if (action === 'add-loose') {
     const product = state.products.find(row => row.id === button.dataset.id);
@@ -940,20 +914,20 @@ document.addEventListener('click', async event => {
   if (action === 'favorite') return toggleWishlist(button.dataset.id);
   if (action === 'quantity') return changeQuantity(button.dataset.id, button.dataset.delta, button.dataset.variantId||null);
   if (action === 'remove') { const variantId=button.dataset.variantId||null;return changeQuantity(button.dataset.id,-productQuantity(button.dataset.id,variantId),variantId); }
-  if (action === 'clear-cart') { try { state.cart = await api('/api/cart', { method: 'DELETE' }); state.activeCoupon = null; render(); toast('Cart cleared'); } catch (error) { toast(error.message); } return; }
-  if (action === 'remove-coupon') { try { state.cart = await api('/api/coupons', { method: 'DELETE' }); state.activeCoupon = state.cart.activeCoupon; render(); toast('Coupon cleared'); } catch (error) { toast(error.message); } return; }
-  if (action === 'apply-coupon') { try { const result = await post('/api/coupons/apply', { code: button.dataset.code }); state.cart = result.cart; state.activeCoupon = result.cart.activeCoupon || result.coupon; if (state.view === 'offers') setView('cart'); else render(); toast('Coupon applied'); } catch (error) { toast(error.message); } return; }
-  if (action === 'checkout') { if (!state.user) { state.returnView = 'checkout'; state.modal = { type: 'auth', step: 'phone' }; renderModal(); return; } state.view = 'checkout'; try { await refreshDeliveryAreas(); } catch (error) { toast(`Delivery areas could not be refreshed: ${error.message}`); } if (!state.addresses.length) { render(); openAddress('form'); return; } return render(); }
+  if (action === 'clear-cart') { try { await cartController.flush(); state.cart = await api('/api/cart', { method: 'DELETE' }); state.activeCoupon = null; render(); toast('Cart cleared'); } catch (error) { toast(error.message); } return; }
+  if (action === 'remove-coupon') { try { await cartController.flush(); state.cart = await api('/api/coupons', { method: 'DELETE' }); state.activeCoupon = state.cart.activeCoupon; render(); toast('Coupon cleared'); } catch (error) { toast(error.message); } return; }
+  if (action === 'apply-coupon') { try { await cartController.flush(); const result = await post('/api/coupons/apply', { code: button.dataset.code }); state.cart = result.cart; state.activeCoupon = result.cart.activeCoupon || result.coupon; if (state.view === 'offers') setView('cart'); else render(); toast('Coupon applied'); } catch (error) { toast(error.message); } return; }
+  if (action === 'checkout') { if (!state.user) { state.returnView = 'checkout'; state.modal = { type: 'auth', step: 'phone' }; renderModal(); return; } state.view = 'checkout'; render(); try { await cartController.flush(); state.cart = await api('/api/cart'); } catch (error) { toast(`Delivery areas could not be refreshed: ${error.message}`); } if (!state.addresses.length) { render(); openAddress('form'); return; } return render(); }
   if (action === 'place-order') return placeOrder();
   if (action === 'address-picker') return openAddress('list');
   if (action === 'add-address') return openAddress('form');
   if (action === 'set-address') {
-    try { const data = await api(`/api/addresses/${encodeURIComponent(button.dataset.id)}/default`, { method: 'PATCH' }); state.addresses = data.addresses; state.activeAddress = data.activeAddress || state.addresses.find(row => row.isDefault); state.cart = data.cart; state.addressNotice = { addressId: button.dataset.id, message: addressNoticeCopy(data.cart) }; state.modal = null; await bootstrap(); toast(data.cart.deliveryAvailable === false ? 'This address is outside the delivery area' : 'Delivery address updated'); render(); }
+    try { const data = await api(`/api/addresses/${encodeURIComponent(button.dataset.id)}/default`, { method: 'PATCH' }); state.addresses = data.addresses; state.activeAddress = data.activeAddress || state.addresses.find(row => row.isDefault); state.cart = data.cart; state.addressNotice = { addressId: button.dataset.id, message: addressNoticeCopy(data.cart) }; state.modal = null; toast(data.cart.deliveryAvailable === false ? 'This address is outside the delivery area' : 'Delivery address updated'); render(); }
     catch (error) { toast(error.message); await bootstrap(); }
     return;
   }
   if (action === 'login') return openAuth();
-  if (action === 'logout') { let deviceKey = '', pushWasEnabled = false; try { deviceKey = localStorage.getItem('zepto.push.device') || ''; pushWasEnabled = localStorage.getItem('zepto.push.enabled.customer') === '1'; localStorage.removeItem('zepto.push.enabled.customer'); } catch {} state.loggingOut = true; try { await post('/api/auth/logout', { deviceKey }); } catch (error) { state.loggingOut = false; if (pushWasEnabled) try { localStorage.setItem('zepto.push.enabled.customer', '1'); } catch {} toast(error.message); return; } state.user = null; state.auth = null; state.addresses = []; state.activeAddress = null; state.orders = []; state.notifications = []; state.notificationUnread = 0; state.cart = { items: [], count: 0, subtotal: 0, delivery: 0, platform: 0, discount: 0, total: 0 }; state.wishlist = []; state.coupons = []; state.activeCoupon = null; state.referralData = null; state.activeOrder = null; state.checkoutAddressId = null; state.addressNotice = null; state.rewardCheckout = null; state.rewardQuote = null; state.selectedDeliveryAreaId = null; state.view = 'home'; render(); toast('Signed out'); return; }
+  if (action === 'logout') { let deviceKey = '', pushWasEnabled = false; try { deviceKey = localStorage.getItem('zepto.push.device') || ''; pushWasEnabled = localStorage.getItem('zepto.push.enabled.customer') === '1'; localStorage.removeItem('zepto.push.enabled.customer'); } catch {} state.loggingOut = true; try { await cartController.flush(); await post('/api/auth/logout', { deviceKey }); } catch (error) { state.loggingOut = false; if (pushWasEnabled) try { localStorage.setItem('zepto.push.enabled.customer', '1'); } catch {} toast(error.message); return; } cartController.reset(); api.clear(); listingPages.clear(); state.user = null; state.auth = null; state.addresses = []; state.activeAddress = null; state.orders = []; state.notifications = []; state.notificationUnread = 0; state.cart = { items: [], count: 0, subtotal: 0, delivery: 0, platform: 0, discount: 0, total: 0 }; state.wishlist = []; state.coupons = []; state.activeCoupon = null; state.referralData = null; state.activeOrder = null; state.checkoutAddressId = null; state.addressNotice = null; state.rewardCheckout = null; state.rewardQuote = null; state.selectedDeliveryAreaId = null; state.view = 'home'; render(); toast('Signed out'); return; }
   if (action === 'open-order') return openOrderDetails(button.dataset.id);
   if (action === 'cancel-order') return cancelCustomerOrder(button.dataset.id);
   if (action === 'support') { state.modal = { type: 'info', title: 'Help & support', message: 'Support contact details have not been configured. Orders, addresses and cart updates are handled by this application.' }; return renderModal(); }
@@ -963,7 +937,7 @@ document.addEventListener('change', async event => {
   if (event.target.name === 'payment') { state.checkoutPayment = 'cod'; render(); }
   if (event.target.name === 'checkout-address') {
     state.checkoutAddressId = event.target.value;
-    try { const result = await api(`/api/addresses/${encodeURIComponent(state.checkoutAddressId)}/default`, { method: 'PATCH' }); state.addresses = result.addresses; state.activeAddress = result.activeAddress || state.addresses.find(row => row.isDefault); state.cart = result.cart; state.addressNotice = { addressId: state.checkoutAddressId, message: addressNoticeCopy(result.cart) }; await bootstrap(); state.checkoutAddressId = event.target.value; }
+    try { const result = await api(`/api/addresses/${encodeURIComponent(state.checkoutAddressId)}/default`, { method: 'PATCH' }); state.addresses = result.addresses; state.activeAddress = result.activeAddress || state.addresses.find(row => row.isDefault); state.cart = result.cart; state.addressNotice = { addressId: state.checkoutAddressId, message: addressNoticeCopy(result.cart) }; state.checkoutAddressId = event.target.value; }
     catch (error) { toast(error.message); }
     render();
   }
@@ -1040,7 +1014,7 @@ document.addEventListener('submit', async event => {
   }
   if (event.target.id === 'address-form') {
     const body = Object.fromEntries(new FormData(event.target).entries());
-    try { const result = await post('/api/addresses', body); state.addresses = result.addresses; state.activeAddress = result.address; state.cart = result.cart; state.addressNotice = { addressId: result.address.id, message: addressNoticeCopy(result.cart) }; state.modal = null; await bootstrap(); if (state.view === 'checkout') { state.checkoutAddressId = result.address.id; state.view = 'checkout'; } if (state.view === 'reward-checkout') { state.checkoutAddressId = result.address.id; try { state.rewardQuote = await api('/api/rewards/' + encodeURIComponent(state.rewardCheckout) + '/quote?addressId=' + encodeURIComponent(result.address.id)); } catch (error) { state.rewardQuote = null; toast(error.message); } } render(); toast('Address saved'); }
+    try { const result = await post('/api/addresses', body); state.addresses = result.addresses; state.activeAddress = result.address; state.cart = result.cart; state.addressNotice = { addressId: result.address.id, message: addressNoticeCopy(result.cart) }; state.modal = null; if (state.view === 'checkout') { state.checkoutAddressId = result.address.id; state.view = 'checkout'; } if (state.view === 'reward-checkout') { state.checkoutAddressId = result.address.id; try { state.rewardQuote = await api('/api/rewards/' + encodeURIComponent(state.rewardCheckout) + '/quote?addressId=' + encodeURIComponent(result.address.id)); } catch (error) { state.rewardQuote = null; toast(error.message); } } render(); toast('Address saved'); }
     catch (error) { $('#address-error').textContent = error.message; }
   }
   if (event.target.id === 'coupon-form') {
@@ -1059,7 +1033,7 @@ $('#global-search').addEventListener('input', event => {
   state.view = 'search'; render();
   clearTimeout(searchTimer);
   searchTimer = setTimeout(async () => {
-    try { const result = await api(`/api/products?q=${encodeURIComponent(state.searchQuery)}`); if (requestSequence !== searchSequence) return; state.searchProducts = result.products; render(); }
+    try { await loadListing(false, () => requestSequence === searchSequence); }
     catch {}
   }, 120);
 });
@@ -1085,11 +1059,11 @@ navigation = createPageRouter({ window, readState: () => state, onNavigate: asyn
     }
     if (['orders','order-success','checkout','reward-checkout','referrals','notifications'].includes(route.view) && !state.user) { state.returnView = route.view; openAuth(); return; }
     if (route.view === 'order-success' && route.orderId) { const { order } = await api('/api/orders/' + encodeURIComponent(route.orderId)); if (!current()) return; state.activeOrder = order; }
-    if (route.view === 'orders') { const result = await api('/api/orders'); if (!current()) return; state.orders = result.orders; }
+    if (route.view === 'orders') await loadListing(false, current);
     if (route.view === 'referrals' || route.view === 'offers' && state.user) await loadReferralData();
-    if (route.view === 'notifications') { const n = await api('/api/notifications'); if (!current()) return; state.notifications = n.notifications; state.notificationUnread = n.unread; }
-    if (route.view === 'search') { const result = await api('/api/products?q=' + encodeURIComponent(route.searchQuery)); if (!current()) return; state.searchProducts = result.products; }
-    if (route.view === 'categories' && route.selectedCategory !== 'all') { const result = await api('/api/products?category=' + encodeURIComponent(route.selectedCategory)); if (!current()) return; const ids = new Set(result.products.map(row => row.id)); state.products = [...state.products.filter(row => !ids.has(row.id)), ...result.products]; }
+    if (route.view === 'notifications') await loadListing(false, current);
+    if (route.view === 'search') await loadListing(false, current);
+    if (route.view === 'categories') await loadListing(false, current);
     if (route.view === 'reward-checkout') { state.checkoutAddressId = state.activeAddress?.id || state.addresses[0]?.id; const quote = state.checkoutAddressId ? await api('/api/rewards/' + encodeURIComponent(route.rewardCheckout) + '/quote?addressId=' + encodeURIComponent(state.checkoutAddressId)) : null; if (!current()) return; state.rewardQuote = quote; }
   } catch (error) { if (current()) toast(error.message); }
   if (current()) render();
@@ -1097,25 +1071,25 @@ navigation = createPageRouter({ window, readState: () => state, onNavigate: asyn
 
 bootstrap().catch(showStoreLoadError);
 window.setInterval(async () => {
-  if (!state.user || state.loggingOut || !['orders', 'order-success'].includes(state.view)) return;
+  if (document.hidden || !state.user || state.loggingOut || !['orders', 'order-success'].includes(state.view)) return;
   try {
-    const nextOrders = (await api('/api/orders')).orders;
+    const nextOrders = state.view === 'order-success' && state.activeOrder ? [(await api('/api/orders/'+encodeURIComponent(state.activeOrder.id))).order] : (await api('/api/orders?limit=24')).orders;
     const activeId = state.activeOrder?.id;
     const previousStatuses = state.orders.map(order => `${order.id}:${order.status}`).join('|');
     const previousActiveStatus = state.activeOrder?.status;
-    state.orders = nextOrders;
+    state.orders = [...new Map([...state.orders,...nextOrders].map(row=>[row.id,row])).values()];
     if (activeId) state.activeOrder = nextOrders.find(order => order.id === activeId) || state.activeOrder;
     const nextStatuses = nextOrders.map(order => `${order.id}:${order.status}`).join('|');
     if (nextStatuses !== previousStatuses || state.activeOrder?.status !== previousActiveStatus) render();
   } catch {}
-}, 5000);
+}, 15000);
 window.setInterval(async () => {
-  if (!state.user || state.loggingOut) return;
+  if (document.hidden || !state.user || state.loggingOut) return;
   try {
-    const result = await api('/api/notifications');
+    const result = await api('/api/notifications?limit='+ (state.view === 'notifications' ? '24' : '1'));
     const previousUnread = state.notificationUnread;
     const changed = result.unread !== previousUnread || (state.view === 'notifications' && JSON.stringify(result.notifications) !== JSON.stringify(state.notifications));
-    state.notifications = result.notifications;
+    if (state.view === 'notifications') state.notifications = [...new Map([...state.notifications,...result.notifications].map(row=>[row.id,row])).values()].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
     state.notificationUnread = result.unread;
     setNav();
     if (changed && state.view === 'notifications') updateNotificationHistory();
@@ -1124,6 +1098,6 @@ window.setInterval(async () => {
       if (unread) unread.textContent = `${state.notificationUnread || 0} unread order updates and offers`;
     }
   } catch {}
-}, 7000);
+}, 30000);
 
-refreshNotificationConfig().then(updateNotificationPushStatus);
+// Push configuration is loaded only when the notifications screen needs it.

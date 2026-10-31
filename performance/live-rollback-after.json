@@ -1,0 +1,229 @@
+{
+  "label": "after",
+  "measuredAt": "2026-10-31T04:40:45.495Z",
+  "environment": "Existing configured MongoDB; real handlers including session resolution; five explicitly aborted transactions; same installed indexes for both code versions",
+  "repetitions": 5,
+  "checks": [
+    "Real session restoration, cart writes, authoritative pricing and selected delivery area",
+    "COD order creation ignores client price/total and atomically deducts real stock",
+    "Checkout replay creates one order and does not deduct stock twice",
+    "Admin preparation, rider acceptance, pickup, COD collection and delivery",
+    "Outer transaction explicitly aborted",
+    "Verified no audit order, address, session or notification survived; stock unchanged"
+  ],
+  "timings": {
+    "customer:POST:/api/cart/items": {
+      "medianMs": 1026.34,
+      "samplesMs": [
+        1053.84,
+        985.57,
+        876.62,
+        1076.09,
+        1026.34
+      ]
+    },
+    "customer:GET:/api/cart": {
+      "medianMs": 728.79,
+      "samplesMs": [
+        814.25,
+        726.82,
+        716.27,
+        728.79,
+        785.84
+      ]
+    },
+    "checkout": {
+      "medianMs": 2311.31,
+      "samplesMs": [
+        2324.81,
+        2311.31,
+        2269.22,
+        2300.45,
+        2319.76
+      ]
+    },
+    "checkout-replay": {
+      "medianMs": 766.14,
+      "samplesMs": [
+        766.14,
+        736.58,
+        783.91,
+        804.21,
+        739.97
+      ]
+    },
+    "admin:PATCH:/api/admin/orders/:order/status": {
+      "medianMs": 2264.44,
+      "samplesMs": [
+        1562.26,
+        2304.77,
+        1500.63,
+        2264.44,
+        1645.15,
+        2353.99,
+        1539.47,
+        2607.8,
+        1575.39,
+        2301.31
+      ]
+    },
+    "rider:POST:/api/rider/orders/:order/accept": {
+      "medianMs": 1885.81,
+      "samplesMs": [
+        1798.57,
+        1814.6,
+        1894.9,
+        1885.81,
+        1917.01
+      ]
+    },
+    "rider:POST:/api/rider/orders/:order": {
+      "medianMs": 1185.42,
+      "samplesMs": [
+        1146.3,
+        1162.16,
+        1276.29,
+        1131.58,
+        1130.25,
+        1435.47,
+        1190.85,
+        1154.42,
+        1312.43,
+        1172.53,
+        1185.42,
+        1205.56,
+        1219.45,
+        1173.18,
+        1293.08
+      ]
+    },
+    "rider:POST:/api/rider/orders/:order/payment": {
+      "medianMs": 1161.59,
+      "samplesMs": [
+        1161.59,
+        1189.63,
+        1167.22,
+        1105.12,
+        1069.41
+      ]
+    }
+  },
+  "databaseSafety": {
+    "unchanged": true,
+    "collections": 28,
+    "snapshot": {
+      "addresses": {
+        "count": 1,
+        "sha256": "09f80540918e3e4a80e3638c9ac3338f43029c6fce9ea80a29471b33df693328"
+      },
+      "adminAuditLog": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "admins": {
+        "count": 1,
+        "sha256": "2febd6a0d08fe0dea556827909a345c4482fa8bae9cb0b475e0dcce09fe4b9f3"
+      },
+      "authAttempts": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "carts": {
+        "count": 3,
+        "sha256": "d506a493182b776b110c7f4f8fa578ef1a199412fe6c51e8a6b6afe48975a50f"
+      },
+      "categories": {
+        "count": 1,
+        "sha256": "e48ec6849dd20281fffca4952589eae7feb5841582f2746606cd9065426cec08"
+      },
+      "couponRedemptions": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "coupons": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "deliveryAreas": {
+        "count": 1,
+        "sha256": "c1bae64e027245662a2f63c917b888a018d066123a1f6f039b159e6dd2194cd6"
+      },
+      "notificationCampaigns": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notificationDeliveryLogs": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notificationDevices": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notificationEvents": {
+        "count": 10,
+        "sha256": "510d4e58789fd9dc56641d4f40cd7c8b68386eb8c08f95da4d26ee9b593c6edd"
+      },
+      "notificationOutbox": {
+        "count": 10,
+        "sha256": "0d5661add8c002fb9fec112ba838707103e50dbb7ed05bfce64460603cf3c350"
+      },
+      "notificationPreferences": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notifications": {
+        "count": 8,
+        "sha256": "e6d1716da2c763b997248c6fef012f328f56608ee89bebd53831bb034bb9c831"
+      },
+      "orders": {
+        "count": 1,
+        "sha256": "707b8b654c378184146916ae20a8e936b13c87fb4df45d3e2fb799bd389572c8"
+      },
+      "products": {
+        "count": 2,
+        "sha256": "6bb685d69b90ab0cb9080422fde8dde735ed60d421e8df463f75281b375ad91a"
+      },
+      "referralEvents": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "referrals": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "rewards": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "riderNotifications": {
+        "count": 2,
+        "sha256": "ea37df7868abfd6c33480b2aa8180d765aae60280f6c8f8129378a8e5b8f10e6"
+      },
+      "riders": {
+        "count": 1,
+        "sha256": "b48755ddeadc763c94b6de18fdb5f284bfb3c98a2c2f5e2ae4d897d341ff2cf1"
+      },
+      "sessions": {
+        "count": 3,
+        "sha256": "630351bd900e00ee4f6c7ac460d7863668a022ea697dcb4ca5633d708e2ed299"
+      },
+      "settings": {
+        "count": 1,
+        "sha256": "b862269b542de99c7533ff95871a979c2ff569efc00b6f6f9cf85961783feda5"
+      },
+      "shoppingPreferences": {
+        "count": 1,
+        "sha256": "c4d969824e8458400121de7d582e62131bf013bd830c67f7a64b925b663c89b1"
+      },
+      "users": {
+        "count": 2,
+        "sha256": "0d1c82c3ee6a5ff51fdb0d39024a09bda8c9895d6fdaa01255ffa8fbba7fdd75"
+      },
+      "wishlists": {
+        "count": 1,
+        "sha256": "a77e82442ab8524bebcc31c942030c71d7b8c96adf5224347dd7c83f3cdafef3"
+      }
+    }
+  }
+}
