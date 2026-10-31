@@ -1,0 +1,114 @@
+{
+  "addresses": {
+    "count": 1,
+    "sha256": "09f80540918e3e4a80e3638c9ac3338f43029c6fce9ea80a29471b33df693328"
+  },
+  "adminAuditLog": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "admins": {
+    "count": 1,
+    "sha256": "2febd6a0d08fe0dea556827909a345c4482fa8bae9cb0b475e0dcce09fe4b9f3"
+  },
+  "authAttempts": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "carts": {
+    "count": 3,
+    "sha256": "d506a493182b776b110c7f4f8fa578ef1a199412fe6c51e8a6b6afe48975a50f"
+  },
+  "categories": {
+    "count": 1,
+    "sha256": "e48ec6849dd20281fffca4952589eae7feb5841582f2746606cd9065426cec08"
+  },
+  "couponRedemptions": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "coupons": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "deliveryAreas": {
+    "count": 1,
+    "sha256": "c1bae64e027245662a2f63c917b888a018d066123a1f6f039b159e6dd2194cd6"
+  },
+  "notificationCampaigns": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "notificationDeliveryLogs": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "notificationDevices": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "notificationEvents": {
+    "count": 13,
+    "sha256": "3afb22d57e8d21758ec3c264c3c914cfd273206fa75b623572bd535542dc5c5b"
+  },
+  "notificationOutbox": {
+    "count": 13,
+    "sha256": "6c45ab3fe306b27a4f0abc662030aa49ecb5bb41177d2cd51f130bb7f1c8005c"
+  },
+  "notificationPreferences": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "notifications": {
+    "count": 11,
+    "sha256": "c191666b66ff183d58b389464bd0b5a0c4e7eb0fafdf46c2a52856a93867d1c7"
+  },
+  "orders": {
+    "count": 4,
+    "sha256": "3c3c80dcce0206d87269eb3d5ca2f7e6fb5279b16e766296b5d9e3e18a5a5a13"
+  },
+  "products": {
+    "count": 2,
+    "sha256": "3a38c2f68143a4d464d60bea79bbf88321e6c2006e81a3c024bbfeb16a0cbd2a"
+  },
+  "referralEvents": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "referrals": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "rewards": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "riderNotifications": {
+    "count": 2,
+    "sha256": "ea37df7868abfd6c33480b2aa8180d765aae60280f6c8f8129378a8e5b8f10e6"
+  },
+  "riders": {
+    "count": 1,
+    "sha256": "b48755ddeadc763c94b6de18fdb5f284bfb3c98a2c2f5e2ae4d897d341ff2cf1"
+  },
+  "sessions": {
+    "count": 4,
+    "sha256": "a4ea4e466a2ff1434c08fce188bb446748a649af3c5d919dd1f6be26cc901aef"
+  },
+  "settings": {
+    "count": 1,
+    "sha256": "b862269b542de99c7533ff95871a979c2ff569efc00b6f6f9cf85961783feda5"
+  },
+  "shoppingPreferences": {
+    "count": 1,
+    "sha256": "c4d969824e8458400121de7d582e62131bf013bd830c67f7a64b925b663c89b1"
+  },
+  "users": {
+    "count": 2,
+    "sha256": "1c725e52cc6ff87c75aafa7acbedabf9d415874826fbd71fc88d493dc30239f6"
+  },
+  "wishlists": {
+    "count": 1,
+    "sha256": "a77e82442ab8524bebcc31c942030c71d7b8c96adf5224347dd7c83f3cdafef3"
+  }
+}

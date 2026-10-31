@@ -1,0 +1,35 @@
+{
+  "checkedAt": "2026-10-31T06:29:37.816Z",
+  "checks": [
+    "delivery: authoritative checkout, replay and legacy inbox exclusion",
+    "delivery: atomic acceptance predicate denies second rider and updates competing inbox",
+    "Live handlers enforce exact COD, deny duplicate collection and report delivered sales",
+    "release: authoritative checkout, replay and legacy inbox exclusion",
+    "release: atomic acceptance predicate denies second rider and updates competing inbox",
+    "Release and reassignment retain customer order, historical acceptance events, pending COD and deducted stock",
+    "cancellation: authoritative checkout, replay and legacy inbox exclusion",
+    "Customer cancellation of an unaccepted New order restores inventory inside the same transaction",
+    "All transactions aborted; all collection counts and document digests unchanged"
+  ],
+  "transactionsAborted": 3,
+  "externalRequests": 0,
+  "commits": 0,
+  "historicalStatuses": [
+    {
+      "_id": {
+        "status": "Order received",
+        "paymentStatus": "Pay on delivery"
+      },
+      "count": 3
+    },
+    {
+      "_id": {
+        "status": "Delivered",
+        "paymentStatus": "Cash collected"
+      },
+      "count": 1
+    }
+  ],
+  "databaseUnchanged": true,
+  "collections": 28
+}

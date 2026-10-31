@@ -1,0 +1,110 @@
+{
+  "inspectedAt": "2026-10-31T06:33:08.687Z",
+  "readOnly": true,
+  "statuses": [
+    {
+      "_id": {
+        "status": "Order received",
+        "assigned": false,
+        "paymentMethod": "Cash on delivery",
+        "paymentStatus": "Pay on delivery"
+      },
+      "count": 3
+    },
+    {
+      "_id": {
+        "status": "Delivered",
+        "assigned": true,
+        "paymentMethod": "Cash on delivery",
+        "paymentStatus": "Cash collected"
+      },
+      "count": 1
+    }
+  ],
+  "media": {
+    "products": {
+      "records": 2,
+      "local": 2,
+      "cloudinary": 0,
+      "other": 0,
+      "managed": 0
+    },
+    "categories": {
+      "records": 1,
+      "local": 1,
+      "cloudinary": 0,
+      "other": 0,
+      "managed": 0
+    }
+  },
+  "banners": [],
+  "heroConfigured": false,
+  "legacyDesignatedRiderConfigured": true,
+  "cloudinaryConfigured": false,
+  "orderIndexes": [
+    {
+      "name": "_id_",
+      "key": {
+        "_id": 1
+      }
+    },
+    {
+      "name": "orders_id_unique",
+      "key": {
+        "id": 1
+      }
+    },
+    {
+      "name": "orders_customer_created",
+      "key": {
+        "userId": 1,
+        "createdAt": -1
+      }
+    },
+    {
+      "name": "orders_idempotency_unique",
+      "key": {
+        "userId": 1,
+        "idempotencyKey": 1
+      }
+    },
+    {
+      "name": "orders_rider_status",
+      "key": {
+        "riderId": 1,
+        "status": 1,
+        "deliveredAt": -1
+      }
+    },
+    {
+      "name": "orders_dispatch",
+      "key": {
+        "status": 1,
+        "riderId": 1,
+        "createdAt": -1
+      }
+    },
+    {
+      "name": "orders_customer_coupon",
+      "key": {
+        "userId": 1,
+        "couponCode": 1
+      }
+    },
+    {
+      "name": "orders_admin_page",
+      "key": {
+        "createdAt": -1,
+        "id": 1
+      }
+    },
+    {
+      "name": "orders_customer_page",
+      "key": {
+        "userId": 1,
+        "createdAt": -1,
+        "id": 1
+      }
+    }
+  ]
+}

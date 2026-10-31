@@ -46,37 +46,34 @@ try{
   await visit('/categories/pantry');await b.until(`!!document.querySelector('[data-action="load-more"]')`);const cards=await b.evaluate(`document.querySelectorAll('.product-card').length`);await click('[data-action="load-more"]');await b.until(`document.querySelectorAll('.product-card').length>${cards}`);ok('Customer catalogue exposes subsequent pages without downloading every product');
   await visit('/search?q=Paged%20item%2049');await b.until(`!!document.querySelector('.product-visual[data-id="page-49"]')`);await click('.product-visual[data-id="page-49"] .quick-add');await serverUntil(()=>quantity('page-49')===1);ok('Search results outside bootstrap can be added to cart');
   await b.send('Page.navigate',{url:f.base+'/admin'});await b.until(`!!document.querySelector('.metric-grid')`);
-  for(const view of ['products','banners','categories','deliveryAreas','orders','customers','coupons','riders','notifications','referrals','overview']){await click(`#nav [data-view="${view}"]`);await b.until(`document.querySelector('#view .data-table, #view .metric-grid, #view .panel') && !document.querySelector('#view > p[role="status"]')`);assert.equal(await b.evaluate(`document.querySelector('#notice')?.classList.contains('error')`),false,view);}ok('All eleven admin screens load without unrelated bootstrap data');
-  await click('#nav [data-view="products"]');await b.until(`!!document.querySelector('[data-page="next"]')`);await click('[data-page="next"]');await b.until(`document.querySelector('[aria-label="Result pages"]').textContent.includes('26')`);ok('Admin product pagination works');
-  await b.evaluate(`const input=document.querySelector('[data-filter]');input.value='Paged item 49';input.dispatchEvent(new Event('input',{bubbles:true}));`);await b.until(`document.querySelector('.data-table tbody').textContent.includes('Paged item 49')&&document.querySelectorAll('.data-table tbody tr').length===1`);ok('Admin search queries records outside the displayed page');
+  for(const view of ['products','banners','categories','deliveryAreas','orders','customers','coupons','riders','notifications','referrals','overview']){await b.evaluate(`location.hash=${JSON.stringify(view)}`);await b.until(`document.querySelector('#view .data-table, #view .metric-grid, #view .panel, #view .order-grid, #view .product-grid') && !document.querySelector('#view > p[role="status"]')`);assert.equal(await b.evaluate(`document.querySelector('#notice')?.classList.contains('error')`),false,view);}ok('All eleven admin screens load without unrelated bootstrap data');
+  await click('#nav [data-view="catalogue"]');await b.until(`!!document.querySelector('[data-page="next"]')`);await click('[data-page="next"]');await b.until(`document.querySelector('[aria-label="Result pages"]').textContent.includes('26')`);ok('Admin product pagination works');
+  await b.evaluate(`const input=document.querySelector('[data-filter]');input.value='Paged item 49';input.dispatchEvent(new Event('input',{bubbles:true}));`);await b.until(`document.querySelector('.product-grid').textContent.includes('Paged item 49')&&document.querySelectorAll('.catalogue-card').length===1`);ok('Admin search queries records outside the displayed page');
   // Password login is tested against fixture credentials, never a real secret.
   await b.send('Network.deleteCookies',{name:'asid',url:f.base});await b.send('Page.navigate',{url:f.base+'/admin'});await b.until(`!document.querySelector('#login').classList.contains('hidden')`);
   await b.evaluate(`document.querySelector('#login-form [name="phone"]').value='9990000001';document.querySelector('#login-form [name="password"]').value=${JSON.stringify(password)};document.querySelector('#login-form').requestSubmit();`);await b.until(`!!document.querySelector('.metric-grid')`);ok('Admin password login restores the scoped dashboard');
   await click('#nav [data-view="orders"]');
-  for(const status of ['Being packed','Ready for pickup']){
-    const selector=`[data-order-status="${status}"]`;
-    await b.until(`!!document.querySelector(${JSON.stringify(selector)})`);await click(selector);
-    await serverUntil(()=>f.docs.orders[0].status===status);
-    await b.until(`document.querySelector('#notice')?.textContent.includes(${JSON.stringify(status==='Being packed'?'being packed':'ready')})`);
-  }
-  ok('Admin mobile order controls advance packing and ready-for-pickup');
+  await b.until('!!document.querySelector("[data-order]")'); await click('[data-order]');
+  await b.until('document.querySelector(".order-details")?.textContent.includes("Bill summary")');
+  assert.equal(await b.evaluate('!!document.querySelector("[data-assign],[data-order-status]")'),false);
+  ok('Admin order details display items, payment and timeline with automatic rider distribution');
   await b.send('Page.navigate',{url:f.base+'/rider'});await b.until(`!!document.querySelector('#rider-nav [data-view="orders"]')`);
   for(const view of ['orders','earnings','profile','home']){await click(`#rider-nav [data-view="${view}"]`);}ok('Rider session, orders, earnings, profile and home navigation');
   await click('[data-action="open-order"]');await b.until(`!!document.querySelector('[data-action="accept-order"]')`);
-  for(const [action,status] of [['accept-order','Rider assigned'],['pickup','Picked up'],['out_for_delivery','Out for delivery']]){
+  for(const [action,status] of [['accept-order','Accepted'],['out_for_delivery','Out for Delivery']]){
     await b.until(`!!document.querySelector('[data-action="${action}"]')`);await click(`[data-action="${action}"]`);
     await serverUntil(()=>f.docs.orders[0].status===status);
   }
   await b.until(`!!document.querySelector('[data-action="collect-cash"]')`);
   assert.equal(await b.evaluate(`document.querySelector('[data-action="delivered"]').disabled`),true);
-  await b.evaluate('window.confirm=()=>true');await click('[data-action="collect-cash"]');
+  await b.evaluate(`window.confirm=()=>true;document.querySelector('[data-cash-amount]').value=${f.docs.orders[0].total}`);await click('[data-action="collect-cash"]');
   await serverUntil(()=>!!f.docs.orders[0].paymentCollection?.collectedAt);
   await b.until(`document.querySelector('[data-action="delivered"]')?.disabled===false`);await click('[data-action="delivered"]');
   await serverUntil(()=>f.docs.orders[0].status==='Delivered');
   await b.until(`document.body.textContent.includes('Delivery marked complete')`);
   await click('#rider-nav [data-view="earnings"]');await b.until(`document.querySelector('.earnings-hero')?.textContent.includes('1 completed')`);
   assert.equal(f.docs.orders[0].paymentCollection.amount,f.docs.orders[0].total);
-  ok('Rider mobile review, acceptance, pickup, cash gate, COD collection, delivery and earnings');
+  ok('Rider mobile review, acceptance, start delivery, cash gate, COD collection, delivery and earnings');
   for(let i=0;i<50;i++)f.docs.orders.push({...structuredClone(f.docs.orders[0]),id:'rider-page-'+String(i).padStart(2,'0'),displayId:'Rider page '+i});
   await b.send('Page.navigate',{url:f.base+'/rider'});await b.until(`!!document.querySelector('#rider-nav [data-view="earnings"]')`);await click('#rider-nav [data-view="earnings"]');
   await b.evaluate(`window.__fetch=window.fetch;window.fetch=async(...args)=>{if(String(args[0]).includes('/api/rider/bootstrap'))await new Promise(r=>setTimeout(r,300));return window.__fetch(...args);};document.querySelector('[data-action="next-page"]').click();document.querySelector('[data-action="next-page"]').click();`);
@@ -89,7 +86,7 @@ try{
       await b.send('Page.navigate',{url:f.base+route});await b.until(ready);
       const layout=await b.evaluate(`({viewport:innerWidth,content:document.documentElement.scrollWidth})`);
       report.layouts.push({role,width,...layout});assert.ok(layout.content<=layout.viewport+1,`${role} has horizontal page overflow at ${width}px`);
-      if(width===390){const screenshot=await b.send('Page.captureScreenshot',{format:'png'});await fs.writeFile(`performance/mobile-${role}.png`,Buffer.from(screenshot.data,'base64'));}
+      if(width===390){const screenshot=await b.send('Page.captureScreenshot',{format:'png'});await fs.writeFile(`verification/mobile-${role}.png`,Buffer.from(screenshot.data,'base64'));}
     }
   }
   ok('Customer, admin and rider pages fit 360px, 390px and 768px viewports');
@@ -97,6 +94,6 @@ try{
   report.errors=b.events.filter(e=>e.method==='Runtime.exceptionThrown').map(e=>e.params.exceptionDetails.exception?.description||e.params.exceptionDetails.text);
   assert.deepEqual(report.errors,[]);
   report.failedRequests=b.events.filter(e=>e.method==='Network.loadingFailed'&&!e.params.canceled).map(e=>({error:e.params.errorText}));
-  await fs.writeFile('performance/browser-workflows.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report.measurements));
+  await fs.writeFile('verification/admin-redesign-browser.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report.measurements));
 }catch(error){console.error(error);console.error(await b.evaluate(`({path:location.pathname,toast:document.querySelector('#toast-root')?.textContent,notice:document.querySelector('#notice')?.textContent,text:document.body.innerText.slice(0,1400)})`).catch(()=>({})));process.exitCode=1;}
 finally{await b.close();for(const fn of cleanup)await fn();}

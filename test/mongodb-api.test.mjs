@@ -21,9 +21,9 @@ test('HTTP Mongo mock: registration, durable hashed session, login, logout and g
 test('HTTP Mongo mock: COD checkout uses authoritative prices, atomic stock, notifications and idempotent replay', async t => {
   const f = await fixture(t);
   const response = await f.order(); assert.equal(response.status, 201, JSON.stringify(response.data));
-  assert.equal(response.data.order.total, 122); assert.equal(response.data.order.status, 'Order received');
+  assert.equal(response.data.order.total, 122); assert.equal(response.data.order.status, 'New');
   assert.equal(f.docs.products[0].stock, 19); assert.equal(f.docs.carts.length, 0);
-  assert.equal(f.docs.notifications.length, 1); assert.equal(f.docs.notificationEvents.length, 1); assert.equal(f.docs.notificationOutbox.length, 1);
+  assert.equal(f.docs.notifications.length, 1); assert.equal(f.docs.notificationEvents.length, 3); assert.equal(f.docs.notificationOutbox.length, 3);
   const writes = f.operations.filter(row => ['insertOne','updateOne','deleteOne'].includes(row.operation) && ['orders','products','notificationEvents','notificationOutbox','carts'].includes(row.name));
   assert.ok(writes.every(row => row.session));
   const replay = await f.call('/api/orders', { method: 'POST', body: { addressId: 'a1', paymentMethod: 'cod', idempotencyKey: 'test-checkout-key-0001', total: 0 } });
@@ -54,14 +54,14 @@ test('HTTP Mongo mock: customer cancellation is owned and restores inventory onl
 });
 test('HTTP Mongo mock: real admin and rider handlers enforce full cash delivery workflow', async t => {
   const f = await fixture(t), placed = await f.order(), id = placed.data.order.id;
-  for (const status of ['Being packed', 'Ready for pickup']) { const result = await f.call(`/api/admin/orders/${id}/status`, { as: 'admin', method: 'PATCH', body: { status } }); assert.equal(result.status, 200, JSON.stringify(result.data)); }
+  for (const status of ['Being packed', 'Ready for pickup']) { const result = await f.call(`/api/admin/orders/${id}/status`, { as: 'admin', method: 'PATCH', body: { status } }); assert.equal(result.status, 409, JSON.stringify(result.data)); }
   assert.equal((await f.call('/api/rider/bootstrap', { as: 'rider' })).data.availableOrders.length, 1);
   assert.equal((await f.call(`/api/rider/orders/${id}/accept`, { as: 'rider', method: 'POST', body: {} })).status, 200);
   assert.equal((await f.call(`/api/orders/${id}/cancel`, { method: 'POST', body: {} })).status, 409);
-  for (const action of ['pickup','out_for_delivery']) assert.equal((await f.call(`/api/rider/orders/${id}`, { as: 'rider', method: 'POST', body: { action } })).status, 200);
+  for (const action of ['out_for_delivery']) assert.equal((await f.call(`/api/rider/orders/${id}`, { as: 'rider', method: 'POST', body: { action } })).status, 200);
   assert.equal((await f.call(`/api/rider/orders/${id}`, { as: 'rider', method: 'POST', body: { action: 'delivered' } })).status, 409);
-  assert.equal((await f.call(`/api/rider/orders/${id}/payment`, { as: 'rider', method: 'POST', body: { method: 'cash', confirmed: true } })).status, 200);
-  assert.equal((await f.call(`/api/rider/orders/${id}/payment`, { as: 'rider', method: 'POST', body: { method: 'cash', confirmed: true } })).status, 409);
+  assert.equal((await f.call(`/api/rider/orders/${id}/payment`, { as: 'rider', method: 'POST', body: { method: 'cash', confirmed: true, amount: placed.data.order.total } })).status, 200);
+  assert.equal((await f.call(`/api/rider/orders/${id}/payment`, { as: 'rider', method: 'POST', body: { method: 'cash', confirmed: true, amount: placed.data.order.total } })).status, 409);
   const delivered = await f.call(`/api/rider/orders/${id}`, { as: 'rider', method: 'POST', body: { action: 'delivered' } }); assert.equal(delivered.status, 200, JSON.stringify(delivered.data));
   assert.equal(f.docs.orders[0].paymentStatus, 'Cash collected');
   const summary = await f.call('/api/rider/bootstrap', { as: 'rider' }); assert.equal(summary.data.deliverySummary.completedDeliveries, 1); assert.equal(summary.data.deliverySummary.codCollected, 122);

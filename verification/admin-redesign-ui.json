@@ -1,0 +1,560 @@
+{
+  "checkedAt": "2026-10-31T06:37:43.598Z",
+  "environment": "Synthetic Mongo fixture and intercepted Cloudinary responses; no live provider calls",
+  "checks": [
+    "All 12 admin modules, creation forms, order details and customer tabs fit 360, 390 and 768px",
+    "Five primary navigation buttons open their working sections",
+    "Editing product details and saving an unchanged image preserve existing image arrays",
+    "Packed and loose product creation saves variant pricing, MRP and inventory",
+    "Category upload, preview, invalid file, provider failure, replacement and removal work through real form/API code with mocked Cloudinary",
+    "Promotional/homepage banners and hero upload save secure URLs and public IDs",
+    "Coupon creation preserves free-delivery rules",
+    "Delivery area creation saves charges and availability",
+    "Rider registration requires password change and stores a password hash",
+    "Customer profile editing saves and reloads the open profile",
+    "Notification campaign form queues an in-app campaign in the fixture without running workers",
+    "Referral campaign rules remain editable",
+    "Rider rejection and release controls preserve the customer order and allow another eligible rider to accept",
+    "New rider password login, mandatory password change, online availability and released-order visibility work"
+  ],
+  "layouts": [
+    {
+      "name": "overview",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "orders",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "order details",
+      "width": 360,
+      "page": 360,
+      "dialog": {
+        "client": 360,
+        "scroll": 360
+      },
+      "overflow": []
+    },
+    {
+      "name": "products",
+      "width": 394,
+      "page": 394,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "products create form",
+      "width": 394,
+      "page": 394,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "product editor",
+      "width": 394,
+      "page": 394,
+      "dialog": {
+        "client": 394,
+        "scroll": 394
+      },
+      "overflow": []
+    },
+    {
+      "name": "categories",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "categories create form",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "banners",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "riders",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "riders create form",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "deliveryAreas",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "deliveryAreas create form",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "more",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "customers",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "customer overview",
+      "width": 360,
+      "page": 360,
+      "dialog": {
+        "client": 360,
+        "scroll": 360
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer addresses",
+      "width": 360,
+      "page": 360,
+      "dialog": {
+        "client": 360,
+        "scroll": 360
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer orders",
+      "width": 360,
+      "page": 360,
+      "dialog": {
+        "client": 360,
+        "scroll": 360
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer coupons",
+      "width": 360,
+      "page": 360,
+      "dialog": {
+        "client": 360,
+        "scroll": 360
+      },
+      "overflow": []
+    },
+    {
+      "name": "coupons",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "coupons create form",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "notifications",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "referrals",
+      "width": 360,
+      "page": 360,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "overview",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "orders",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "order details",
+      "width": 390,
+      "page": 390,
+      "dialog": {
+        "client": 390,
+        "scroll": 390
+      },
+      "overflow": []
+    },
+    {
+      "name": "products",
+      "width": 425,
+      "page": 425,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "products create form",
+      "width": 425,
+      "page": 425,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "product editor",
+      "width": 425,
+      "page": 425,
+      "dialog": {
+        "client": 425,
+        "scroll": 425
+      },
+      "overflow": []
+    },
+    {
+      "name": "categories",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "categories create form",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "banners",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "riders",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "riders create form",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "deliveryAreas",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "deliveryAreas create form",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "more",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "customers",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "customer overview",
+      "width": 390,
+      "page": 390,
+      "dialog": {
+        "client": 390,
+        "scroll": 390
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer addresses",
+      "width": 390,
+      "page": 390,
+      "dialog": {
+        "client": 390,
+        "scroll": 390
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer orders",
+      "width": 390,
+      "page": 390,
+      "dialog": {
+        "client": 390,
+        "scroll": 390
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer coupons",
+      "width": 390,
+      "page": 390,
+      "dialog": {
+        "client": 390,
+        "scroll": 390
+      },
+      "overflow": []
+    },
+    {
+      "name": "coupons",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "coupons create form",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "notifications",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "referrals",
+      "width": 390,
+      "page": 390,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "overview",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "orders",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "order details",
+      "width": 768,
+      "page": 768,
+      "dialog": {
+        "client": 680,
+        "scroll": 680
+      },
+      "overflow": []
+    },
+    {
+      "name": "products",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "products create form",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "product editor",
+      "width": 768,
+      "page": 768,
+      "dialog": {
+        "client": 680,
+        "scroll": 680
+      },
+      "overflow": []
+    },
+    {
+      "name": "categories",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "categories create form",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "banners",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "riders",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "riders create form",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "deliveryAreas",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "deliveryAreas create form",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "more",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "customers",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "customer overview",
+      "width": 768,
+      "page": 768,
+      "dialog": {
+        "client": 680,
+        "scroll": 680
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer addresses",
+      "width": 768,
+      "page": 768,
+      "dialog": {
+        "client": 680,
+        "scroll": 680
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer orders",
+      "width": 768,
+      "page": 768,
+      "dialog": {
+        "client": 680,
+        "scroll": 680
+      },
+      "overflow": []
+    },
+    {
+      "name": "customer coupons",
+      "width": 768,
+      "page": 768,
+      "dialog": {
+        "client": 680,
+        "scroll": 680
+      },
+      "overflow": []
+    },
+    {
+      "name": "coupons",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "coupons create form",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "notifications",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    },
+    {
+      "name": "referrals",
+      "width": 768,
+      "page": 768,
+      "dialog": null,
+      "overflow": []
+    }
+  ],
+  "errors": []
+}

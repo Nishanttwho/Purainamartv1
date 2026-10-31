@@ -8,6 +8,7 @@
   <link rel="icon" href="/assets/puraina-mart-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/admin.css">
   <link rel="stylesheet" href="/notifications.css">
+  <link rel="stylesheet" href="/admin-mobile.css">
 </head>
 <body>
   <main id="login" class="login-shell hidden">
@@ -22,15 +23,13 @@
   </main>
   <div id="app" class="app-shell hidden">
     <aside class="sidebar"><a class="brand" href="/admin" aria-label="Puraina Mart Admin home"><img src="/assets/puraina-mart-logo.png" alt="Puraina Mart logo"></a>
-      <nav id="nav" aria-label="Admin sections">
-        <button class="nav-item active" data-view="overview">Overview</button><button class="nav-item" data-view="products">Products</button><button class="nav-item" data-view="banners">Banners</button><button class="nav-item" data-view="categories">Categories</button><button class="nav-item" data-view="deliveryAreas">Delivery Areas</button><button class="nav-item" data-view="orders">Orders</button><button class="nav-item" data-view="customers">Customers</button><button class="nav-item" data-view="coupons">Coupons</button><button class="nav-item" data-view="riders">Riders</button><button class="nav-item" data-view="notifications">Notifications</button><button class="nav-item" data-view="referrals">Referrals &amp; Rewards</button>
-      </nav><div class="sidebar-foot">Shared application data<br><a href="/">Open customer app</a> · <a href="/rider">Rider app</a></div>
+      <nav id="nav" aria-label="Admin sections"></nav><div class="sidebar-foot">Shared application data<br><a href="/">Open customer app</a> · <a href="/rider">Rider app</a></div>
     </aside>
-    <section class="main-area"><header class="topbar"><div><p class="eyebrow">STORE OPERATIONS</p><h1 id="page-title">Overview</h1></div><div class="top-actions"><span id="admin-name"></span><button id="logout" class="quiet">Sign out</button></div></header>
-      <div id="notice" class="notice hidden" role="status"></div><div id="view"></div>
+    <section class="main-area"><header class="topbar"><div><p class="eyebrow">STORE OPERATIONS</p><h1 id="page-title">Overview</h1></div><div class="top-actions"><span id="admin-name"></span><button class="quiet" id="refresh-admin" aria-label="Refresh current screen">↻</button><button id="logout" class="quiet">Sign out</button></div></header>
+      <div id="notice" class="notice hidden" role="status"></div><div id="view" tabindex="-1"></div>
     </section>
   </div>
-  <dialog id="editor"><form method="dialog" id="editor-form"><div class="modal-head"><div><p class="eyebrow">UPDATE RECORD</p><h2 id="editor-title">Edit</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div><div id="editor-fields" class="form-grid"></div><div class="modal-actions"><button class="quiet" value="cancel">Cancel</button><button class="primary" id="editor-save" value="default">Save changes</button></div></form></dialog>
+  <dialog id="editor"><form method="dialog" id="editor-form"><div class="modal-head"><div><p class="eyebrow">UPDATE RECORD</p><h2 id="editor-title">Edit</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">×</button></div><div id="editor-fields" class="form-grid"></div><div class="modal-actions"><button class="quiet" value="cancel" formnovalidate>Cancel</button><button class="primary" id="editor-save" value="default">Save changes</button></div></form></dialog>
   <script type="module" src="/admin.js" defer></script>
 </body>
 </html>

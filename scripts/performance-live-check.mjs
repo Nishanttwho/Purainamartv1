@@ -82,11 +82,11 @@ try {
   const replay=await call('customer','/api/orders','POST',{addressId:temporaryIds.address,paymentMethod:'cod',idempotencyKey:temporaryIds.checkout},'checkout-replay');assert.equal(replay.order.id,order.id);assert.equal(replay.idempotentReplay,true);check('Checkout replay creates one order and does not deduct stock twice');
   await db.collection('settings').updateOne({key:'dispatchSettings'},{$set:{value:{designatedRiderId:rider.id}}},{upsert:true,session});
   await db.collection('riders').updateOne({id:rider.id},{$set:{status:'online'}},{session});
-  for(const status of ['Being packed','Ready for pickup'])await call('admin',`/api/admin/orders/${order.id}/status`,'PATCH',{status});
+  if(label==='before') for(const status of ['Being packed','Ready for pickup'])await call('admin',`/api/admin/orders/${order.id}/status`,'PATCH',{status});
   await call('rider',`/api/rider/orders/${order.id}/accept`,'POST',{});
-  for(const action of ['pickup','out_for_delivery'])await call('rider',`/api/rider/orders/${order.id}`,'POST',{action});
-  await call('rider',`/api/rider/orders/${order.id}/payment`,'POST',{method:'cash',confirmed:true});
-  const delivered=await call('rider',`/api/rider/orders/${order.id}`,'POST',{action:'delivered'});assert.equal(delivered.order.status,'Delivered');assert.equal(delivered.order.paymentCollection.amount,order.total);check('Admin preparation, rider acceptance, pickup, COD collection and delivery');
+  for(const action of (label==='before'?['pickup','out_for_delivery']:['out_for_delivery']))await call('rider',`/api/rider/orders/${order.id}`,'POST',{action});
+  await call('rider',`/api/rider/orders/${order.id}/payment`,'POST',{method:'cash',confirmed:true,amount:order.total});
+  const delivered=await call('rider',`/api/rider/orders/${order.id}`,'POST',{action:'delivered'});assert.equal(delivered.order.status,'Delivered');assert.equal(delivered.order.paymentCollection.amount,order.total);check(label==='before'?'Legacy preparation, acceptance, pickup and COD delivery':'Automatic rider acceptance, start delivery, exact COD collection and delivery');
   await session.abortTransaction();check('Outer transaction explicitly aborted');
   assert.equal(await db.collection('orders').countDocuments({id:order.id}),0);
   assert.equal(await db.collection('addresses').countDocuments({id:temporaryIds.address}),0);

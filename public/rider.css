@@ -18,4 +18,5 @@
 /* Puraina Mart horizontal wordmark */
 .rider-brand-icon{width:clamp(126px,18vw,176px);height:auto;max-height:56px;object-fit:contain;border-radius:6px;background:#fff;padding:4px 7px;flex:0 1 auto}
 .auth-brand img{width:min(220px,72vw);height:auto;max-height:74px;object-fit:contain;border-radius:0}
+.delivery-actions{display:grid;gap:12px;margin-top:20px}.delivery-actions small{line-height:1.6;color:#716c79}.rider-panel .cash-amount{display:grid;gap:10px;font-size:15px;margin:18px 0}.cash-amount input{min-height:48px;padding:12px;border:1px solid #dcd5e5;border-radius:12px;font-size:16px;width:100%}.rider-panel .rider-button{min-height:44px}.rider-item{gap:12px}.rider-item>span{min-width:0;flex:1}.rider-item>strong{flex-shrink:0}.step-list small{display:block;line-height:1.5;color:#716c79}.rider-address a{display:block;padding:8px 0}.delivery-history-tabs{margin-top:-4px}.rider-panel,.rider-card{overflow-wrap:anywhere}.rider-tabs button{min-height:44px}
 @media(max-width:700px){.rider-brand-icon{width:clamp(126px,38vw,146px);height:auto;max-height:48px}.auth-brand img{width:min(200px,72vw);height:auto;max-height:68px}}

@@ -1,0 +1,30 @@
+{
+  "verifiedDate": "2026-10-31",
+  "tests": {
+    "passed": 149,
+    "failed": 0
+  },
+  "syntaxModules": 92,
+  "imports": 29,
+  "buildFiles": 95,
+  "browserWorkflowChecks": 36,
+  "responsiveLayouts": 78,
+  "viewportWidths": [
+    360,
+    390,
+    768
+  ],
+  "browserRuntimeErrors": 0,
+  "liveTransactions": {
+    "aborted": 3,
+    "committed": 0,
+    "unchangedCollections": 28
+  },
+  "cloudinary": {
+    "configured": false,
+    "simulatedProviderChecksPassed": true,
+    "liveProviderVerified": false
+  },
+  "deployed": false,
+  "committed": false
+}

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { addRider } from './support/workflow-fixture.mjs';
 import { fixture, password } from './support/api-fixture.mjs';
 import { hashPassword, verifyPassword } from '../lib/password.mjs';
 import { hashSessionId } from '../lib/mongodb-auth.mjs';
@@ -16,13 +17,13 @@ test('Mongo mock audit: custom millilitres use current per-litre price and resto
   assert.equal(f.docs.products[0].stock, 2000);
 });
 async function ready(f, id) {
-  for (const status of ['Being packed', 'Ready for pickup']) assert.equal((await f.call(`/api/admin/orders/${id}/status`, { as: 'admin', method: 'PATCH', body: { status } })).status, 200);
+  assert.ok((await f.call('/api/rider/bootstrap', { as:'rider' })).data.availableOrders.some(o=>o.id===id));
 }
 async function deliver(f, id) {
   await ready(f, id);
   assert.equal((await f.call(`/api/rider/orders/${id}/accept`, { as: 'rider', method: 'POST', body: {} })).status, 200);
-  for (const action of ['pickup', 'out_for_delivery']) assert.equal((await f.call(`/api/rider/orders/${id}`, { as: 'rider', method: 'POST', body: { action } })).status, 200);
-  assert.equal((await f.call(`/api/rider/orders/${id}/payment`, { as: 'rider', method: 'POST', body: { confirmed: true, method: 'cash', amount: 1 } })).status, 200);
+  for (const action of ['out_for_delivery']) assert.equal((await f.call(`/api/rider/orders/${id}`, { as: 'rider', method: 'POST', body: { action } })).status, 200);
+  assert.equal((await f.call(`/api/rider/orders/${id}/payment`, { as: 'rider', method: 'POST', body: { confirmed: true, method: 'cash', amount: f.docs.orders.find(o=>o.id===id).total } })).status, 200);
   const result = await f.call(`/api/rider/orders/${id}`, { as: 'rider', method: 'POST', body: { action: 'delivered' } });
   assert.equal(result.status, 200, JSON.stringify(result.data));
 }
@@ -95,7 +96,7 @@ test('Mongo mock audit: callback replay and duplicate requests commit one order 
   f.retryNextTransaction();
   const attempts = await Promise.all([checkout(f, 'retry-audit-order-001'), checkout(f, 'retry-audit-order-001')]);
   assert.deepEqual(attempts.map(row => row.status).sort(), [200,201]);
-  assert.equal(f.docs.orders.length, 1); assert.equal(f.docs.products[0].stock, 19); assert.equal(f.docs.notifications.length, 1); assert.equal(f.docs.notificationOutbox.length, 1);
+  assert.equal(f.docs.orders.length, 1); assert.equal(f.docs.products[0].stock, 19); assert.equal(f.docs.notifications.length, 1); assert.equal(f.docs.notificationOutbox.length, 3);
 });
 
 test('Mongo mock audit: two customers cannot exceed a global coupon cap', async t => {
@@ -123,10 +124,12 @@ test('Mongo mock audit: rider rejection, reassignment and cash reconciliation pr
   assert.equal((await f.call(`/api/rider/orders/${id}/reject`, { as: 'rider', method: 'POST', body: { reason: 'Unavailable' } })).status, 200);
   assert.equal((await f.call(`/api/rider/orders/${id}`, { as: 'rider' })).status, 404);
   assert.equal((await f.call(`/api/rider/orders/${id}/accept`, { as: 'rider', method: 'POST', body: {} })).status, 409);
-  assert.equal((await f.call(`/api/admin/orders/${id}/assign`, { as: 'admin', method: 'POST', body: { riderId: 'r1' } })).status, 200);
-  for (const action of ['pickup','out_for_delivery']) await f.call(`/api/rider/orders/${id}`, { as: 'rider', method: 'POST', body: { action } });
-  await f.call(`/api/rider/orders/${id}/payment`, { as: 'rider', method: 'POST', body: { method: 'cash', confirmed: true, amount: 1 } });
-  const cancelled = await f.call(`/api/rider/orders/${id}/cancel`, { as: 'rider', method: 'POST', body: { reason: 'Unable to complete' } });
+  assert.equal((await f.call(`/api/admin/orders/${id}/assign`, { as: 'admin', method: 'POST', body: { riderId: 'r1' } })).status, 409);
+  addRider(f, 'r2');
+  assert.equal((await f.call(`/api/rider/orders/${id}/accept`, { as:'r2', method:'POST', body:{} })).status, 200);
+  for (const action of ['out_for_delivery']) await f.call(`/api/rider/orders/${id}`, { as: 'r2', method: 'POST', body: { action } });
+  await f.call(`/api/rider/orders/${id}/payment`, { as: 'r2', method: 'POST', body: { method: 'cash', confirmed: true, amount: f.docs.orders.find(o=>o.id===id).total } });
+  const cancelled = await f.call(`/api/rider/orders/${id}/cancel`, { as: 'r2', method: 'POST', body: { reason: 'Unable to complete' } });
   assert.equal(cancelled.status, 200); assert.equal(cancelled.data.order.inventoryReconciliationRequired, true); assert.equal(cancelled.data.order.paymentCollection.amount, 122); assert.equal(cancelled.data.order.paymentReconciliation.status, 'review_required'); assert.equal(f.docs.products[0].stock, 19);
 });
 

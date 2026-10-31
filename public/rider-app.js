@@ -1,3 +1,5 @@
+import { orderStatus } from './order-status.js';
+import { riderOrderView } from './rider-order-view.js';
 import { createApiClient } from './api-client.js';
 const state = {
   authLoading: true, page: 0, view: 'home', rider: null, availableOrders: [], assignedOrders: [], deliveredOrders: [],
@@ -54,6 +56,10 @@ async function loadPage(quiet, month, date, page, sequence) {
     const previous = JSON.stringify([state.rider?.status, state.availableOrders.map(o => o.id), state.assignedOrders.map(o => `${o.id}:${o.status}`), state.deliveredOrders.map(o => o.id)]);
     Object.assign(state, data); state.authLoading=false;
     state.rider = data.rider;
+    if (state.rider?.mustChangePassword) {
+      state.availableOrders=[]; state.assignedOrders=[]; state.deliveredOrders=[]; state.selectedOrder=null;
+      render(); return;
+    }
     if(state.rider && localStorage.getItem('zepto.push.enabled.rider')==='1') import('/push-client.js').then(push=>push.syncGrantedWebPush('rider')).catch(()=>{});
     state.pushEnabled=localStorage.getItem('zepto.push.enabled.rider')==='1';
     if (state.selectedOrder?.id) {
@@ -70,7 +76,7 @@ async function loadPage(quiet, month, date, page, sequence) {
     loadPage.lastSummary=JSON.stringify(data.deliverySummary);
     const deepOrderId=new URLSearchParams(location.search).get('order');
     if(deepOrderId&&state.rider&&!state.rider.mustChangePassword&&!state.deepLinkHandled){state.deepLinkHandled=true;try{const result=await api(`/api/rider/orders/${encodeURIComponent(deepOrderId)}`);state.selectedOrder=result.order;state.view='detail';render();}catch{toast('This delivery is no longer available to this rider.');}}
-    if (quiet && previous !== next) toast('Dispatch list updated');
+    if (quiet && previous !== next) toast('Deliveries updated');
   } catch (error) {
     if (sequence !== loadSequence) return;
     state.authLoading=false;
@@ -122,7 +128,7 @@ function renderOrderCard(order, mode = 'available') {
   const assigned = mode === 'active';
   const delivered = mode === 'delivered';
   const review = mode === 'available';
-  return `<article class="rider-card ${review ? 'reviewable-order' : ''}"><div class="delivery-card-top"><strong>Delivery ${esc(order.displayId)}</strong><span class="status-pill ${delivered ? '' : assigned ? 'amber' : 'green'}">${esc(order.status)}</span></div><p>${order.itemCount} item${order.itemCount === 1 ? '' : 's'} ? ${esc(order.deliveryArea?.name || order.city)}${order.amountToCollect ? ` ? Collect ${money(order.amountToCollect)}` : ''}</p><div class="card-actions">${review ? `<button class="rider-button lime" data-action="open-order" data-id="${esc(order.id)}">Review order</button>` : !delivered ? `<button class="rider-button outline" data-action="open-order" data-id="${esc(order.id)}">Details</button>` : ''}</div></article>`;
+  return `<article class="rider-card ${review ? 'reviewable-order' : ''}"><div class="delivery-card-top"><strong>Delivery ${esc(order.displayId)}</strong><span class="status-pill ${delivered ? '' : assigned ? 'amber' : 'green'}">${esc(orderStatus(order))}</span></div><p>${order.itemCount} item${order.itemCount === 1 ? '' : 's'} · ${esc(order.deliveryArea?.name || order.city)}${order.amountToCollect ? ` · Collect ${money(order.amountToCollect)}` : ''}</p><div class="card-actions">${review ? `<button class="rider-button lime" data-action="open-order" data-id="${esc(order.id)}">Review order</button>` : `<button class="rider-button outline" data-action="open-order" data-id="${esc(order.id)}">Details</button>`}</div></article>`;
 }
 function empty(title, copy, illustration = 'box') {
   return `<div class="empty-rider"><div class="empty-icon">${icon(illustration,31)}</div><h3>${esc(title)}</h3><p>${esc(copy)}</p></div>`;
@@ -130,32 +136,22 @@ function empty(title, copy, illustration = 'box') {
 
 function renderHome() {
   const active = state.assignedOrders[0];
-  return `${renderPageHead(`Hi, ${state.rider.name.split(' ')[0]}`, 'Manage assigned deliveries', refreshAction)}<section class="status-hero"><div><small>Delivery availability</small><h2>${state.rider.status === 'online' ? 'You are online' : 'You are offline'}</h2><p>${state.rider.status === 'online' ? 'You can accept ready orders from the shared customer app.' : 'Go online when you are ready to receive assigned orders.'}</p></div><button class="switch-button ${state.rider.status === 'offline' ? 'offline' : ''}" data-action="toggle-status">${state.rider.status === 'online' ? 'Go offline' : 'Go online'}</button></section><section class="rider-metrics"><div class="metric-card"><small>Ready for pickup</small><strong>${state.availableOrders.length}</strong></div><div class="metric-card"><small>Active deliveries</small><strong>${state.assignedOrders.length}</strong></div><div class="metric-card"><small>Completed deliveries</small><strong>${state.deliverySummary.completedDeliveries}</strong></div><div class="metric-card"><small>COD collected</small><strong>${money(state.deliverySummary.codCollected)}</strong></div></section>${active ? `<div class="rider-section-head"><h2>Your active delivery</h2><span>Continue the pickup and delivery steps</span></div><div class="rider-grid">${renderOrderCard(active,'active')}</div>` : ''}<div class="rider-section-head"><h2>Ready for pickup</h2><span>Shared customer orders</span></div>${state.availableOrders.length ? `<div class="rider-grid">${state.availableOrders.slice(0,4).map(order => renderOrderCard(order)).join('')}</div>` : empty('No deliveries waiting', state.rider.status === 'online' ? 'New customer orders marked ready will appear here.' : 'Go online when you are ready to accept a delivery.', 'pin')}<p class="fineprint" style="margin-top:15px">Order dispatch is controlled by the shared application. Live location, GPS routing, and push dispatch are not configured.</p>`;
+  return `${renderPageHead(`Hi, ${state.rider.name.split(' ')[0]}`, 'New orders and your deliveries', refreshAction)}<section class="status-hero"><div><small>Delivery availability</small><h2>${state.rider.status === 'online' ? 'You are online' : 'You are offline'}</h2><p>${state.rider.status === 'online' ? 'New customer orders appear here automatically.' : 'Go online when you are ready to accept orders.'}</p></div><button class="switch-button ${state.rider.status === 'offline' ? 'offline' : ''}" data-action="toggle-status">${state.rider.status === 'online' ? 'Go offline' : 'Go online'}</button></section><section class="rider-metrics"><div class="metric-card"><small>New Orders</small><strong>${state.availableOrders.length}</strong></div><div class="metric-card"><small>Active deliveries</small><strong>${state.assignedOrders.length}</strong></div><div class="metric-card"><small>Completed deliveries</small><strong>${state.deliverySummary.completedDeliveries}</strong></div><div class="metric-card"><small>COD collected</small><strong>${money(state.deliverySummary.codCollected)}</strong></div></section>${active ? `<div class="rider-section-head"><h2>Your active delivery</h2><span>Continue your accepted delivery</span></div><div class="rider-grid">${renderOrderCard(active,'active')}</div>` : ''}<div class="rider-section-head"><h2>New Orders</h2><span>Shared customer orders</span></div>${state.availableOrders.length ? `<div class="rider-grid">${state.availableOrders.slice(0,4).map(order => renderOrderCard(order)).join('')}</div>` : empty('No deliveries waiting', state.rider.status === 'online' ? 'New customer orders will appear here automatically.' : 'Go online when you are ready to accept a delivery.', 'pin')}<p class="fineprint" style="margin-top:15px">Accept an order to reserve it. Other riders will no longer see it in New Orders.</p>`;
 }
 
 function renderOrders() {
-  const lists = { available: state.availableOrders, active: state.assignedOrders, delivered: state.deliveredOrders };
-  const rows = lists[state.orderTab] || [];
-  const label = { available: 'Ready for pickup', active: 'Active deliveries', delivered: 'Completed deliveries' }[state.orderTab];
-  return `${renderPageHead('Deliveries', 'Orders shared with the local customer app', refreshAction)}<div class="rider-tabs">${[['available',`Ready (${state.availableOrders.length})`],['active',`Active (${state.assignedOrders.length})`],['delivered',`Completed (${state.deliveredOrders.length})`]].map(([id,name]) => `<button class="${state.orderTab === id ? 'active' : ''}" data-tab="${id}">${name}</button>`).join('')}</div>${rows.length ? `<div class="rider-grid">${rows.map(order => renderOrderCard(order,state.orderTab)).join('')}</div>` : empty(`No ${label.toLowerCase()}`, state.orderTab === 'available' ? 'Customer orders appear here when they are ready for pickup.' : 'Your deliveries will appear here as their status changes.')}`;
+  const rows = ({ available: state.availableOrders, active: state.assignedOrders, delivered: state.deliveredOrders })[state.orderTab] || [];
+  const mine = state.orderTab !== 'available';
+  return renderPageHead('Orders', 'Accept a new order or continue your deliveries', refreshAction) +
+    '<div class="rider-tabs"><button data-tab="available" class="'+(!mine?'active':'')+'">New Orders</button><button data-tab="active" class="'+(mine?'active':'')+'">My Deliveries</button></div>' +
+    (mine ? '<div class="rider-tabs delivery-history-tabs"><button data-tab="active" class="'+(state.orderTab==='active'?'active':'')+'">Active</button><button data-tab="delivered" class="'+(state.orderTab==='delivered'?'active':'')+'">Completed</button></div>' : '') +
+    (rows.length ? '<div class="rider-grid">'+rows.map(order=>renderOrderCard(order,state.orderTab)).join('')+'</div>' : empty(mine?'No deliveries here':'No new orders', mine?'Your accepted deliveries appear here.':'New orders appear automatically while you are online.'));
 }
 
 function renderDetail() {
   const order = state.selectedOrder;
-  if (!order) return `${renderPageHead('Delivery details','The delivery could not be loaded',ordersAction)}${empty('Delivery unavailable','It may have been assigned to another rider. Refresh your deliveries.')}`;
-  const next = {
-    'Ready for pickup': ['accept-order','Accept Order'],
-    'Rider assigned': ['pickup','Confirm pickup'],
-    'Picked up': ['out_for_delivery','Start delivery'],
-    'Out for delivery': ['delivered','Mark delivered']
-  }[order.status];
-  const timeline = order.timeline || [];
-  const cashDue = order.paymentMethod === 'Cash on delivery' && !order.paymentCollection?.collectedAt;
-  const verifiedOnlinePaid = order.paymentVerification?.status === 'verified' && order.paymentVerification?.transactionReference;
-  const codPaid = order.paymentMethod === 'Cash on delivery' && order.paymentCollection?.collectedAt && order.paymentCollection.riderId === state.rider.id && Number(order.paymentCollection.amount) === Number(order.total);
-  const deliveryPaymentOk = order.paymentMethod === 'Cash on delivery' ? Boolean(codPaid) : Boolean(verifiedOnlinePaid);
-  const paymentPanel = `<article class="rider-panel"><h3>Payment collection</h3><div class="profile-line"><span>Order total</span><strong>${money(order.total)}</strong></div><div class="profile-line"><span>Payment method</span><strong>${esc(order.paymentMethod)}</strong></div><div class="profile-line"><span>Payment status</span><strong>${esc(order.paymentStatus || 'Unpaid')}</strong></div>${order.paymentVerification?.transactionReference ? `<div class="profile-line"><span>Transaction reference</span><strong>${esc(order.paymentVerification.transactionReference)}</strong></div>` : ''}${order.paymentCollection?.collectedAt ? `<div class="order-alert">Cash collection recorded: ${money(order.paymentCollection.amount)} · ${new Date(order.paymentCollection.collectedAt).toLocaleString()}</div>` : cashDue && order.status === 'Out for delivery' ? `<button class="rider-button primary" style="width:100%;margin-top:12px" data-action="collect-cash" data-id="${esc(order.id)}">Collect Cash · ${money(order.total)}</button>` : verifiedOnlinePaid ? `<div class="order-alert">Provider-verified payment recorded.</div>` : order.status === 'Out for delivery' ? `<div class="order-alert">This historical payment needs store review.</div>` : ''}</article>`;
-  return `${renderPageHead(`Delivery ${order.displayId}`,order.status,ordersAction)}<div class="order-detail-layout"><section><article class="rider-panel"><h2>Delivery address</h2><div class="rider-address"><strong>${esc(order.deliveryArea?.name || order.address.deliveryAreaName || 'Delivery area')}</strong>${order.customerContact ? `<small>${esc(order.customerContact.name)} · <a href="tel:${esc(order.customerContact.phone)}">${esc(order.customerContact.phone)}</a></small>` : ""}${esc(order.address.line1)}${order.address.line2 ? `, ${esc(order.address.line2)}` : ''}<br/>${esc(order.address.city)}${order.address.pincode ? ` · ${esc(order.address.pincode)}` : ''}</div>${order.deliveryInstructions ? `<p class='delivery-instructions'><strong>Delivery instructions</strong><br/>${esc(order.deliveryInstructions)}</p>` : ''}<div class="delivery-facts"><span>Items <b>${order.itemCount}</b></span><span>Payment <b>${esc(order.paymentMethod)}</b></span>${order.amountToCollect ? `<span>Collect <b>${money(order.amountToCollect)}</b></span>` : ''}</div></article>${paymentPanel}<article class="rider-panel"><h2>Order items</h2>${order.items.map(item => `<div class="rider-item"><span class="item-emoji">${esc(item.emoji)}</span><span><b>${esc(item.name)}</b><small>${esc(item.variantLabel || item.detail)}</small><small>${money(item.price||0)} each / line ${money(item.lineTotal||0)}</small></span><strong>× ${item.quantity}</strong></div>`).join('')}</article></section><aside><article class="rider-panel"><h3>Delivery progress</h3><ul class="step-list">${timeline.map((step,index) => `<li class="${step.complete ? 'done' : ''}"><b>${step.complete ? '✓' : index + 1}</b><span>${esc(step.label)}${step.complete && step.at ? `<small style="display:block;margin-top:3px;color:#928c99">${new Date(step.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</small>` : ''}</span></li>`).join('')}</ul>${next ? `<button class="rider-button ${next[0] === 'delivered' ? 'primary' : 'lime'}" style="width:100%;margin-top:13px" data-action="${next[0]}" data-id="${esc(order.id)}" ${next[0] === 'accept-order' && state.rider.status !== 'online' || next[0] === 'delivered' && !deliveryPaymentOk ? 'disabled title="Complete the payment step first"' : ''}>${next[0] === 'accept-order' && state.rider.status !== 'online' ? 'Go online to accept' : next[0] === 'delivered' && !deliveryPaymentOk ? 'Payment required before delivery' : next[1]}</button>${next[0]==='accept-order'?`<button class='rider-button outline' style='width:100%;margin-top:9px' data-action='reject-order' data-id='${esc(order.id)}'>Reject Order</button>`:''}${order.assignedToRiderId===state.rider.id?`<button class="rider-button danger" style="width:100%;margin-top:9px" data-action="cancel-delivery" data-id="${esc(order.id)}">Cancel delivery</button>`:''}` : order.status === 'Cancelled' ? `<div class="order-alert">This delivery was cancelled by ${esc(order.cancellation?.actorType || 'another user')}${order.cancellation?.reason ? `: ${esc(order.cancellation.reason)}` : ''}.</div>` : `<div class="order-alert">This delivery is complete. The customer order now shows Delivered.</div>`}</article><p class="fineprint">Status changes are saved to the same order record used by the customer app. GPS and real dispatch are not connected.</p></aside></div>`;
+  if (!order) return renderPageHead('Delivery details', 'This delivery is no longer available', ordersAction) + empty('Delivery unavailable', 'Refresh New Orders or My Deliveries to continue.');
+  return renderPageHead('Order ' + order.displayId, orderStatus(order), ordersAction) + riderOrderView(order, state.rider);
 }
 
 function renderEarnings() {
@@ -185,17 +181,20 @@ async function updateOrder(action, id) {
 async function rejectOrder(id) {
   if (!confirm('Reject this delivery? It will leave your available list.')) return;
   const reason = prompt('Why are you rejecting this delivery?'); if (reason === null) return;
-  try { await post(`/api/rider/orders/${encodeURIComponent(id)}/reject`, { reason }); await load(); toast('Delivery rejected'); }
+  try { await post(`/api/rider/orders/${encodeURIComponent(id)}/reject`, { reason }); state.selectedOrder=null; state.view='orders'; state.orderTab='available'; await load(); toast('Delivery rejected; the order remains available to other riders'); }
   catch (error) { toast(error.message); await load(); }
 }
 async function cancelDelivery(id) {
-  const reason = prompt('Cancellation reason (required):'); if (reason === null) return;
-  try { await post(`/api/rider/orders/${encodeURIComponent(id)}/cancel`, { reason }); state.view = 'orders'; await load(); toast('Delivery cancelled and customer notified'); }
+  const reason = prompt('Reason for releasing this delivery (required):'); if (reason === null) return;
+  try { await post(`/api/rider/orders/${encodeURIComponent(id)}/release`, { reason }); state.view = 'orders'; await load(); toast('Delivery released. The customer order remains open.'); }
   catch (error) { toast(error.message); await load(); }
 }
 async function collectCash(id) {
-  if (!confirm('Confirm that you physically received the full COD amount from the customer?')) return;
-  try { const result = await post(`/api/rider/orders/${encodeURIComponent(id)}/payment`, { method: 'cash', confirmed: true }); state.selectedOrder = result.order; await load(); state.selectedOrder = state.assignedOrders.find(order => order.id === id) || result.order; state.view = 'detail'; render(); toast('Cash collection recorded'); }
+  const entered = document.querySelector('[data-cash-amount]')?.value;
+  const amount = Number(entered);
+  if (!entered || !Number.isFinite(amount) || amount !== state.selectedOrder?.total) { toast('Enter the exact amount of cash received.'); return; }
+  if (!confirm('Confirm that you physically received ₹' + amount + ' from the customer?')) return;
+  try { const result = await post(`/api/rider/orders/${encodeURIComponent(id)}/payment`, { method: 'cash', confirmed: true, amount }); state.selectedOrder = result.order; await load(); state.selectedOrder = state.assignedOrders.find(order => order.id === id) || result.order; state.view = 'detail'; render(); toast('Cash collection recorded'); }
   catch (error) { toast(error.message); await load(); }
 }
 
@@ -213,7 +212,7 @@ document.addEventListener('click', async event => {
   if (action === 'reject-order') return rejectOrder(target.dataset.id);
   if (action === 'cancel-delivery') return cancelDelivery(target.dataset.id);
   if (action === 'collect-cash') return collectCash(target.dataset.id);
-  if (['pickup','out_for_delivery','delivered'].includes(action)) return updateOrder(action,target.dataset.id);
+  if (['out_for_delivery','delivered'].includes(action)) return updateOrder(action,target.dataset.id);
   if (action === 'toggle-status') {
     try { const data = await post('/api/rider/status',{status:state.rider.status === 'online' ? 'offline' : 'online'}); state.rider=data.rider; await load(); toast(`You are ${state.rider.status}`); }
     catch (error) { toast(error.message); }
@@ -224,7 +223,7 @@ document.addEventListener('click', async event => {
   if (action === 'logout') {
     await post('/api/rider/auth/logout',{deviceKey:localStorage.getItem('zepto.push.device')||''}); api.clear();
     loadSequence++; loadPending = null;
-    state.rider=null; state.availableOrders=[]; state.assignedOrders=[]; state.deliveredOrders=[]; state.view='home'; state.authStep='phone'; render(); return;
+    state.rider=null; state.availableOrders=[]; state.assignedOrders=[]; state.deliveredOrders=[]; state.selectedOrder=null; state.view='home'; state.authStep='phone'; render(); return;
   }
 });
 
@@ -249,7 +248,7 @@ document.addEventListener('submit', async event => {
   }
 });
 
-window.setInterval(() => { if(state.rider && !document.hidden && !state.busy) load(true); }, 15000);
+window.setInterval(() => { if(state.rider && !document.hidden && !state.busy && !document.querySelector('[data-cash-amount]:focus')) load(true); }, 15000);
 window.addEventListener('zepto:push-registered',()=>{if(!state.rider)return;state.pushEnabled=true;render();toast('Browser alerts enabled');});
 window.addEventListener('zepto:push-error',event=>toast(pushErrorMessage(new Error(event.detail||'Could not register this browser for alerts'))));
 window.addEventListener('zepto:push-message',async()=>{if(!state.rider)return;try{await load(true);toast('New delivery alert');}catch{}});
