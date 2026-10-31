@@ -45,7 +45,10 @@ async function request(url, options = {}) {
   const patch = (url, body) => api(url, { method: 'PATCH', body: JSON.stringify(body) });
   function toast(message, error = false) { const node = $('#notice'); node.textContent = message; node.classList.toggle('error', error); node.classList.remove('hidden'); clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.add('hidden'), 4200); }
   function showLogin() { state.data = null; api.clear(); login.classList.remove('hidden'); app.classList.add('hidden'); }
-  function showApp(admin) { login.classList.add('hidden'); app.classList.remove('hidden'); $('#admin-name').textContent = admin?.name || 'Administrator'; }
+  function showApp(admin) {
+    login.classList.add('hidden'); app.classList.remove('hidden'); $('#admin-name').textContent = admin?.name || 'Administrator';
+    if (/^\/staff\/admin\/login\/?$/.test(location.pathname)) history.replaceState(null, '', '/admin' + location.search + location.hash);
+  }
   async function init() {
     $('#demo-hint').textContent = 'Sign in with your administrator credentials.';
     try { await refresh(); }

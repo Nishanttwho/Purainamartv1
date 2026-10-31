@@ -3,6 +3,7 @@ import { createApiClient } from './api-client.js';
 import { createCartController } from './cart-controller.js';
 import { distinctProductImageSources, optimizedImage } from './product-images.js';
 import { createPageRouter, routeFromUrl } from './router.js';
+import { installStaffAccess } from './staff-access.js';
 let navigation;
 let accountViews, accountViewsPromise;
 function deferredView(name) {
@@ -575,7 +576,10 @@ function renderModal() {
   syncModalPageState(true);
   const modal = state.modal;
   let title = '', content = '';
-  if (modal.type === 'auth') {
+  if (modal.type === 'staff') {
+    title = 'Staff Access';
+    content = '<div class="form-stack"><a class="primary-button" href="/staff/admin/login">Admin Login</a><a class="secondary-button" href="/staff/rider/login">Rider Login</a></div>';
+  } else if (modal.type === 'auth') {
     title = modal.step === 'register' ? 'Create your account' : 'Sign in with your phone';
     content = modal.step === 'password' ? `<p class="form-hint">Continue as <strong>+91 ${escapeHtml(modal.phone)}</strong>.</p><form id="auth-password-form" class="form-stack"><label>Password<input name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required/></label><p id="auth-error" class="form-error" role="alert"></p><button class="primary-button" type="submit">Sign in&nbsp; →</button><button class="text-link" type="button" data-action="auth-register">Create a new account</button><button class="text-link" type="button" data-action="auth-back">Change mobile number</button></form><p class="fineprint">Older accounts without a password can use a linked Google account or set one from an existing signed-in session. Phone recovery is unavailable until an OTP provider is configured.</p>` : modal.step === 'register' ? `<p class="form-hint">Create a new account for <strong>+91 ${escapeHtml(modal.phone)}</strong>.</p><form id="auth-register-form" class="form-stack"><label>Full name<input name="name" autocomplete="name" maxlength="50" required/></label><label>Password<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required/></label><label>Confirm password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required/></label><p id="auth-error" class="form-error" role="alert"></p><button class="primary-button" type="submit">Create account&nbsp; →</button><button class="text-link" type="button" data-action="auth-back-password">Back to sign in</button></form><p class="fineprint">Use at least 12 characters. Existing accounts cannot be claimed through registration.</p>` : `<p class="form-hint">Enter a mobile number to continue.</p><form id="auth-phone-form" class="form-stack"><label>Mobile number<div style="display:flex;align-items:center;gap:7px"><span class="tag">+91</span><input name="phone" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit number" required/></div></label><button class="google-signin-button" type="button" data-action="google-login"><span class="google-mark" aria-hidden="true">G</span>Continue with Google</button><p id="google-auth-error" class="form-error" role="status" aria-live="polite"></p><p id="auth-error" class="form-error"></p><button class="primary-button" type="submit">Continue&nbsp; →</button></form>`;
   } else if (modal.type === 'address') {
@@ -617,6 +621,7 @@ function renderModal() {
 }
 
 function openAuth() { state.returnView = state.view; state.modal = { type: 'auth', step: 'phone' }; renderModal(); }
+installStaffAccess($('.topbar .brand'), () => { state.modal = { type: 'staff' }; renderModal(); });
 let googleIdentityScriptPromise;
 function loadGoogleIdentityServices() {
   if (window.google?.accounts?.oauth2) return Promise.resolve();

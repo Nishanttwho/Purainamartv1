@@ -60,6 +60,7 @@ async function loadPage(quiet, month, date, page, sequence) {
       state.availableOrders=[]; state.assignedOrders=[]; state.deliveredOrders=[]; state.selectedOrder=null;
       render(); return;
     }
+    if (state.rider && /^\/staff\/rider\/login\/?$/.test(location.pathname)) history.replaceState(null, '', '/rider' + location.search + location.hash);
     if(state.rider && localStorage.getItem('zepto.push.enabled.rider')==='1') import('/push-client.js').then(push=>push.syncGrantedWebPush('rider')).catch(()=>{});
     state.pushEnabled=localStorage.getItem('zepto.push.enabled.rider')==='1';
     if (state.selectedOrder?.id) {
